@@ -1,0 +1,11 @@
+# Node / frontend
+client/node_modules
+client/dist
+
+# Go
+server/*.exe
+server/*.test
+
+# General
+.DS_Store
+.env
