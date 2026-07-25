@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -53,20 +54,40 @@ type RoomConfig struct {
 	VoteSeconds  int
 }
 
+type NightState struct {
+	Targets map[string]string // impostorID -> targetID
+}
+
+type VoteState struct {
+	Votes map[string]string // voterID -> targetID or "skip"
+}
+
 type Room struct {
-	Code    string
-	Players []*Player
-	Phase   string
-	HostID  string
-	Config  RoomConfig
+	Code      string
+	Players   []*Player
+	Phase     string
+	HostID    string
+	Config    RoomConfig
 	CreatedAt time.Time
 
 	Intents chan Intent
 
 	phaseTimer     *time.Timer
 	roomEmptySince *time.Time
+	nightState     *NightState
+	nightResult    *nightResolution // cached result from night→resolution transition
+	voteState      *VoteState
+	endedAt        time.Time
 
+	EliminatedPlayers []string // IDs of eliminated players, in order
+
+	done      chan struct{}
 	onTeardown func(code string)
+}
+
+type nightResolution struct {
+	eliminatedID string
+	role         string
 }
 
 func (r *Room) Run() {
@@ -85,8 +106,11 @@ func (r *Room) Run() {
 			r.handleIntent(intent)
 		case <-timerC:
 			r.phaseTimer = nil
+			r.handlePhaseTimerExpiry()
 		case <-ticker.C:
 			r.handleHousekeeping()
+		case <-r.done:
+			return
 		}
 	}
 }
@@ -97,6 +121,28 @@ func (r *Room) handleIntent(in Intent) {
 		r.handleJoin(in)
 	case IntentStartGame:
 		r.handleStartGame(in)
+	case IntentNightKill:
+		r.handleNightKill(in)
+	case IntentChat:
+		r.handleChat(in)
+	case IntentVote:
+		r.handleVote(in)
+	case IntentDisconnect:
+		r.handleDisconnect(in)
+	}
+}
+
+func (r *Room) handleDisconnect(in Intent) {
+	p := r.findPlayer(in.PlayerID)
+	if p == nil || !p.Connected {
+		return
+	}
+	p.Connected = false
+	p.DisconnectedAt = time.Now()
+	close(p.Send)
+	r.broadcastAll(playerDisconnectedMsg(p.ID))
+	if r.Phase == "lobby" {
+		r.broadcastAll(playerListMsg(r))
 	}
 }
 
@@ -152,8 +198,180 @@ func (r *Room) handleStartGame(in Intent) {
 	}
 	r.assignRoles()
 	for _, pl := range r.Players {
-		r.sendTo(pl, buildRoleReveal(pl, r.Players))
+		r.sendTo(pl, buildRoleReveal(pl, r.Players, r.Config.NightSeconds))
 	}
+	r.startPhase("night", r.Config.NightSeconds)
+}
+
+func (r *Room) handleNightKill(in Intent) {
+	p := r.findPlayer(in.PlayerID)
+	if r.Phase != "night" || p == nil || !p.IsAlive || p.Role != "impostor" {
+		return
+	}
+	var payload struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal(in.Payload, &payload); err != nil {
+		return
+	}
+	target := r.findPlayer(payload.Target)
+	if target == nil || !target.IsAlive || target.ID == p.ID {
+		return
+	}
+	if r.nightState == nil {
+		r.nightState = &NightState{Targets: make(map[string]string)}
+	}
+	r.nightState.Targets[p.ID] = target.ID
+	r.broadcastToImpostors(nightStatusMsg(r.nightState, r.Players))
+}
+
+func (r *Room) handleChat(in Intent) {
+	p := r.findPlayer(in.PlayerID)
+	if r.Phase != "day" || p == nil || !p.IsAlive {
+		return
+	}
+	var payload struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(in.Payload, &payload); err != nil {
+		return
+	}
+	text := strings.TrimSpace(payload.Text)
+	if text == "" || len(text) > ChatMaxLength {
+		return
+	}
+	r.broadcastAll(chatMessage(p, text))
+}
+
+func (r *Room) handleVote(in Intent) {
+	p := r.findPlayer(in.PlayerID)
+	if r.Phase != "voting" || p == nil || !p.IsAlive {
+		return
+	}
+	var payload struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal(in.Payload, &payload); err != nil {
+		return
+	}
+	if r.voteState == nil {
+		r.voteState = &VoteState{Votes: make(map[string]string)}
+	}
+	r.voteState.Votes[p.ID] = payload.Target
+	r.broadcastAll(voteTallyMsg(r.voteState, r.Players))
+}
+
+func (r *Room) handlePhaseTimerExpiry() {
+	switch r.Phase {
+	case "night":
+		r.resolveNight()
+	case "resolution":
+		if r.nightResult != nil {
+			if r.nightResult.eliminatedID != "" {
+				target := r.findPlayer(r.nightResult.eliminatedID)
+				if target != nil {
+					target.IsAlive = false
+					r.EliminatedPlayers = append(r.EliminatedPlayers, r.nightResult.eliminatedID)
+				}
+			}
+			r.nightResult = nil
+			winner := r.checkWin()
+			if winner != "" {
+				r.endGame(winner)
+				return
+			}
+		}
+		r.startPhase("day", r.Config.DaySeconds)
+	case "day":
+		r.voteState = &VoteState{Votes: make(map[string]string)}
+		r.startPhase("voting", r.Config.VoteSeconds)
+	case "voting":
+		r.resolveVoting()
+	}
+}
+
+func (r *Room) resolveNight() {
+	r.phaseTimer = nil
+	var elimID, elimRole string
+	if r.nightState != nil && len(r.nightState.Targets) > 0 {
+		// Count votes per target
+		counts := make(map[string]int)
+		for _, targetID := range r.nightState.Targets {
+			counts[targetID]++
+		}
+		// Find majority among impostors
+		impostorCount := 0
+		for _, p := range r.Players {
+			if p.Role == "impostor" {
+				impostorCount++
+			}
+		}
+		for targetID, count := range counts {
+			majorityRequired := impostorCount / 2 + 1
+			if impostorCount == 1 {
+				majorityRequired = 1
+			}
+			if count >= majorityRequired {
+				target := r.findPlayer(targetID)
+				if target != nil {
+					elimID = targetID
+					elimRole = target.Role
+				}
+				break
+			}
+		}
+	}
+	r.nightState = nil
+	r.nightResult = &nightResolution{eliminatedID: elimID, role: elimRole}
+	r.broadcastAll(resolutionMsg(elimID, elimRole))
+	r.startPhase("resolution", ResolutionDelay)
+}
+
+func (r *Room) resolveVoting() {
+	r.phaseTimer = nil
+	var elimID, elimRole string
+	if r.voteState != nil && len(r.voteState.Votes) > 0 {
+		counts := make(map[string]int)
+		for _, target := range r.voteState.Votes {
+			counts[target]++
+		}
+		maxCount := 0
+		for _, c := range counts {
+			if c > maxCount {
+				maxCount = c
+			}
+		}
+		candidates := make([]string, 0)
+		for target, c := range counts {
+			if c == maxCount {
+				candidates = append(candidates, target)
+			}
+		}
+		if len(candidates) == 1 && candidates[0] != "skip" {
+			target := r.findPlayer(candidates[0])
+			if target != nil {
+				elimID = candidates[0]
+				elimRole = target.Role
+			}
+		}
+	}
+	r.voteState = nil
+	if elimID != "" {
+		target := r.findPlayer(elimID)
+		if target != nil {
+			target.IsAlive = false
+			r.EliminatedPlayers = append(r.EliminatedPlayers, elimID)
+		}
+		r.broadcastAll(eliminationMsg(elimID, elimRole))
+	} else {
+		r.broadcastAll(eliminationMsg("", ""))
+	}
+	winner := r.checkWin()
+	if winner != "" {
+		r.endGame(winner)
+		return
+	}
+	r.nightState = nil
 	r.startPhase("night", r.Config.NightSeconds)
 }
 
@@ -177,6 +395,13 @@ func (r *Room) startPhase(phase string, seconds int) {
 }
 
 func (r *Room) handleHousekeeping() {
+	now := time.Now()
+	if r.Phase == "ended" && !r.endedAt.IsZero() && now.Sub(r.endedAt) > 30*time.Second {
+		if r.onTeardown != nil {
+			r.onTeardown(r.Code)
+		}
+		close(r.done)
+	}
 }
 
 func (r *Room) sendToPlayer(ch chan []byte, msg []byte) {
@@ -199,6 +424,41 @@ func (r *Room) broadcastAll(msg []byte) {
 	}
 }
 
+func (r *Room) broadcastToImpostors(msg []byte) {
+	for _, p := range r.Players {
+		if p.Role == "impostor" {
+			r.sendTo(p, msg)
+		}
+	}
+}
+
+func (r *Room) checkWin() string {
+	aliveImpostors, aliveCrew := 0, 0
+	for _, p := range r.Players {
+		if p.IsAlive {
+			if p.Role == "impostor" {
+				aliveImpostors++
+			} else {
+				aliveCrew++
+			}
+		}
+	}
+	if aliveImpostors >= aliveCrew {
+		return "impostors"
+	}
+	if aliveImpostors == 0 {
+		return "crewmates"
+	}
+	return ""
+}
+
+func (r *Room) endGame(winner string) {
+	r.Phase = "ended"
+	r.phaseTimer = nil
+	r.endedAt = time.Now()
+	r.broadcastAll(gameOverMsg(r, winner))
+}
+
 func (r *Room) findPlayer(id string) *Player {
 	for _, p := range r.Players {
 		if p.ID == id {
@@ -217,7 +477,7 @@ func (r *Room) findPlayerByToken(token string) *Player {
 	return nil
 }
 
-func buildRoleReveal(p *Player, players []*Player) []byte {
+func buildRoleReveal(p *Player, players []*Player, nightSeconds int) []byte {
 	if p.Role == "impostor" {
 		var fellows []PlayerInfo
 		for _, pl := range players {
@@ -229,12 +489,14 @@ func buildRoleReveal(p *Player, players []*Player) []byte {
 			"type":            "role_reveal",
 			"role":            "impostor",
 			"fellowImpostors": fellows,
+			"timer":           nightSeconds,
 		})
 		return b
 	}
 	b, _ := json.Marshal(map[string]interface{}{
-		"type": "role_reveal",
-		"role": "crewmate",
+		"type":  "role_reveal",
+		"role":  "crewmate",
+		"timer": nightSeconds,
 	})
 	return b
 }

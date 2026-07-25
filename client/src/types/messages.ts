@@ -9,14 +9,14 @@ export type ServerMessage =
   | { type: "room_created"; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean }
   | { type: "player_list"; players: PlayerInfo[] }
   | { type: "error"; message: string }
-  | { type: "role_reveal"; role: string; fellowImpostors?: PlayerInfo[] }
+  | { type: "role_reveal"; role: string; fellowImpostors?: PlayerInfo[]; timer: number }
   | { type: "phase_change"; phase: string; timer: number }
   | { type: "night_status"; voted?: string[]; waiting?: boolean }
   | { type: "resolution"; eliminated: string | null; role: string | null }
   | { type: "chat_message"; playerId: string; name: string; text: string }
   | { type: "vote_tally"; votes: { playerId: string; target: string }[] }
   | { type: "elimination"; eliminated: string | null; role: string | null }
-  | { type: "game_over"; winner: string }
+  | { type: "game_over"; winner: string; players: { id: string; name: string; role: string; isAlive: boolean }[] }
   | { type: "resume_state"; phase: string; timer: number; role?: string; fellowImpostors?: PlayerInfo[]; isAlive: boolean; players: PlayerInfo[] }
   | { type: "player_disconnected"; playerId: string }
   | { type: "player_reconnected"; playerId: string };

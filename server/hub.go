@@ -25,6 +25,7 @@ func (h *Hub) CreateRoom(config RoomConfig) (*Room, string) {
 		Config:    config,
 		CreatedAt: time.Now(),
 		Intents:   make(chan Intent, 32),
+		done:      make(chan struct{}),
 		onTeardown: func(c string) {
 			h.mu.Lock()
 			delete(h.Rooms, c)

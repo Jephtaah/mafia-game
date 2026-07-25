@@ -186,6 +186,12 @@ func spawnReadWrite(conn *websocket.Conn, sendCh chan []byte, room *Room, player
 			switch msg.Type {
 			case "start_game":
 				room.Intents <- Intent{PlayerID: playerID, Type: IntentStartGame}
+			case "night_kill":
+				room.Intents <- Intent{PlayerID: playerID, Type: IntentNightKill, Payload: raw}
+			case "chat":
+				room.Intents <- Intent{PlayerID: playerID, Type: IntentChat, Payload: raw}
+			case "vote":
+				room.Intents <- Intent{PlayerID: playerID, Type: IntentVote, Payload: raw}
 			default:
 			}
 		}
