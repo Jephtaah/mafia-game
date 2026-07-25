@@ -12,5 +12,6 @@ server/*.test
 
 # Docs
 AGENTS.md
-plan.md
+docs/plan.md
 docs/prd.md
+docs/plan-v2.md

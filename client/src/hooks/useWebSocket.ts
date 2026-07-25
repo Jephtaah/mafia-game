@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ServerMessage } from '../types/messages'
 
 interface UseWebSocketReturn {
@@ -6,7 +6,6 @@ interface UseWebSocketReturn {
   connect: (url: string) => void
   disconnect: () => void
   onMessage: (handler: (msg: ServerMessage) => void) => void
-  onRawMessage: (handler: (data: string) => void) => void
   readyState: number
 }
 
@@ -14,7 +13,6 @@ export function useWebSocket(): UseWebSocketReturn {
   const [readyState, setReadyState] = useState<number>(WebSocket.CLOSED)
   const wsRef = useRef<WebSocket | null>(null)
   const handlerRef = useRef<((msg: ServerMessage) => void) | null>(null)
-  const rawHandlerRef = useRef<((data: string) => void) | null>(null)
 
   const connect = useCallback((url: string) => {
     const ws = new WebSocket(url)
@@ -26,7 +24,6 @@ export function useWebSocket(): UseWebSocketReturn {
 
     ws.onmessage = (event) => {
       const data = event.data as string
-      rawHandlerRef.current?.(data)
       try {
         const msg = JSON.parse(data) as ServerMessage
         handlerRef.current?.(msg)
@@ -47,6 +44,12 @@ export function useWebSocket(): UseWebSocketReturn {
     setReadyState(WebSocket.CONNECTING)
   }, [])
 
+  useEffect(() => {
+    return () => {
+      wsRef.current?.close()
+    }
+  }, [])
+
   const disconnect = useCallback(() => {
     wsRef.current?.close()
   }, [])
@@ -62,9 +65,5 @@ export function useWebSocket(): UseWebSocketReturn {
     handlerRef.current = handler
   }, [])
 
-  const onRawMessage = useCallback((handler: (data: string) => void) => {
-    rawHandlerRef.current = handler
-  }, [])
-
-  return { send, connect, disconnect, onMessage, onRawMessage, readyState }
+  return { send, connect, disconnect, onMessage, readyState }
 }
