@@ -66,79 +66,101 @@ export default function JoinScreen({ send, readyState, connect, error, onClearEr
   const displayError = localError || error
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-      <div className="bg-gray-800 rounded-xl p-8 w-full max-w-sm shadow-xl">
-        <h1 className="text-2xl font-bold mb-6 text-center">Mafia</h1>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-sm animate-fade-in-up">
+        <div className="text-center mb-10">
+          <h1 className="text-5xl md:text-6xl font-['Playfair_Display_SC'] text-[#C4A861] tracking-[0.08em] leading-none">
+            MAFIA
+          </h1>
+          <p className="text-[10px] text-[#6B7280] tracking-[0.35em] uppercase mt-3">
+            A Game of Deception
+          </p>
+          <div className="w-12 h-px bg-[#C4A861]/30 mx-auto mt-5" />
+        </div>
 
         {displayError && (
-          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-2 rounded mb-4 text-sm">
+          <div className="mb-6 p-3 border border-[#DC2626]/30 bg-[#DC2626]/5 text-[#DC2626] text-xs tracking-wide text-center">
             {displayError}
           </div>
         )}
 
-        <label className="block mb-4">
-          <span className="text-sm text-gray-400">Your Name</span>
-          <input
-            type="text"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            maxLength={20}
-            className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
-            placeholder="Enter your name"
+        <div className="space-y-5">
+          <div>
+            <input
+              type="text"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              maxLength={20}
+              placeholder="Enter your alias"
+              disabled={isConnecting}
+              className="w-full bg-transparent border-b border-[#C4A861]/25 text-[#E8E8E8] py-2.5
+                         placeholder:text-[#6B7280] text-sm tracking-wider
+                         focus:outline-none focus:border-[#C4A861]/60 transition-colors
+                         disabled:opacity-40"
+            />
+          </div>
+
+          <button
+            onClick={handleCreate}
             disabled={isConnecting}
-          />
-        </label>
-
-        <button
-          onClick={handleCreate}
-          disabled={isConnecting}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 rounded py-2.5 font-medium mb-4"
-        >
-          {isConnecting && pendingKind === 'create' ? 'Creating...' : 'Create Room'}
-        </button>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-600" />
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-gray-800 px-2 text-gray-400">or join existing</span>
-          </div>
+            className="w-full py-2.5 border border-[#C4A861]/40 text-[#C4A861] text-xs
+                       tracking-[0.2em] uppercase hover:bg-[#C4A861]/8
+                       disabled:opacity-30 disabled:cursor-not-allowed
+                       transition-all duration-300"
+          >
+            {isConnecting && pendingKind === 'create' ? 'Establishing...' : 'Establish New Game'}
+          </button>
         </div>
 
-        <label className="block mb-4">
-          <span className="text-sm text-gray-400">Your Name</span>
-          <input
-            type="text"
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            maxLength={20}
-            className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
-            placeholder="Enter your name"
-            disabled={isConnecting}
-          />
-        </label>
+        <div className="flex items-center gap-4 my-7">
+          <div className="flex-1 h-px bg-[#C4A861]/15" />
+          <span className="text-[10px] text-[#6B7280] tracking-[0.25em] uppercase">or</span>
+          <div className="flex-1 h-px bg-[#C4A861]/15" />
+        </div>
 
-        <label className="block mb-4">
-          <span className="text-sm text-gray-400">Room Code</span>
-          <input
-            type="text"
-            value={roomCode}
-            onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 4))}
-            maxLength={4}
-            className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 tracking-widest text-center font-mono focus:outline-none focus:border-blue-500"
-            placeholder="XXXX"
-            disabled={isConnecting}
-          />
-        </label>
+        <div className="space-y-5">
+          <div>
+            <input
+              type="text"
+              value={joinName}
+              onChange={(e) => setJoinName(e.target.value)}
+              maxLength={20}
+              placeholder="Enter your alias"
+              disabled={isConnecting}
+              className="w-full bg-transparent border-b border-[#C4A861]/25 text-[#E8E8E8] py-2.5
+                         placeholder:text-[#6B7280] text-sm tracking-wider
+                         focus:outline-none focus:border-[#C4A861]/60 transition-colors
+                         disabled:opacity-40"
+            />
+          </div>
 
-        <button
-          onClick={handleJoin}
-          disabled={isConnecting}
-          className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600 rounded py-2.5 font-medium"
-        >
-          {isConnecting && pendingKind === 'join' ? 'Joining...' : 'Join Room'}
-        </button>
+          <div>
+            <input
+              type="text"
+              value={roomCode}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4))}
+              maxLength={4}
+              placeholder="ROOM CODE"
+              disabled={isConnecting}
+              className="w-full bg-[#12121A] border border-[#C4A861]/25 text-[#C4A861] py-3
+                         text-center text-lg font-['JetBrains_Mono'] tracking-[0.3em]
+                         placeholder:text-[#6B7280] placeholder:tracking-[0.2em] placeholder:text-sm
+                         focus:outline-none focus:border-[#C4A861]/60 transition-colors
+                         disabled:opacity-40"
+            />
+          </div>
+
+          <button
+            onClick={handleJoin}
+            disabled={isConnecting}
+            className="w-full py-2.5 border border-[#C4A861]/40 text-[#C4A861] text-xs
+                       tracking-[0.2em] uppercase hover:bg-[#C4A861]/8
+                       disabled:opacity-30 disabled:cursor-not-allowed
+                       transition-all duration-300"
+          >
+            {isConnecting && pendingKind === 'join' ? 'Entering...' : 'Enter the Fray'}
+          </button>
+        </div>
       </div>
     </div>
   )

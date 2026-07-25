@@ -44,106 +44,134 @@ export default function VotingScreen({ players, playerId, isAlive, send, timer, 
 
   const myVote = votes.find((v) => v.playerId === playerId)
 
+  const radius = 16
+  const circumference = 2 * Math.PI * radius
+  const progress = secondsLeft / timer
+  const offset = circumference * (1 - progress)
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-900 text-white">
-      <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
-        <div className="flex flex-col flex-1">
-          <h1 className="text-lg font-bold">Voting</h1>
-          <div className="w-full h-1 bg-gray-700 rounded-full mt-2 overflow-hidden max-w-[200px]">
-            <div
-              className="h-full rounded-full transition-all duration-1000 ease-linear"
-              style={{
-                width: `${(secondsLeft / timer) * 100}%`,
-                backgroundColor: secondsLeft > 10 ? '#3b82f6' : secondsLeft > 5 ? '#f59e0b' : '#ef4444',
-              }}
-            />
+    <div className="h-dvh flex flex-col">
+      <div className="border-b border-[#C4A861]/10 bg-[#12121A] px-4 py-3">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xs font-['Playfair_Display_SC'] text-[#C4A861] tracking-[0.15em] uppercase">
+              The Accusation
+            </h1>
+            <svg viewBox="0 0 40 40" className="w-7 h-7">
+              <circle cx="20" cy="20" r={radius} fill="none" stroke="rgba(196,168,97,0.12)" strokeWidth="2.5" />
+              <circle cx="20" cy="20" r={radius} fill="none" stroke="#C4A861" strokeWidth="2.5"
+                strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+                className="transition-all duration-1000 ease-linear" />
+              <text x="20" y="20" textAnchor="middle" dominantBaseline="central"
+                className="fill-[#C4A861] text-[9px] font-['JetBrains_Mono']">
+                {secondsLeft}
+              </text>
+            </svg>
           </div>
         </div>
-        <span className="text-sm text-gray-400">{secondsLeft}s remaining</span>
       </div>
 
       {elimination && (
-        <div className="bg-gray-800 mx-4 mt-4 rounded-xl p-4 text-center border border-gray-700">
-          <p className="text-sm text-gray-400">Elimination Result</p>
-          {elimination.eliminated ? (
-            <>
-              <p className="text-lg font-bold text-red-400 mt-1">
-                {players.find((p) => p.id === elimination.eliminated)?.name ?? 'Unknown'}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">was a {elimination.role}.</p>
-            </>
-          ) : (
-            <p className="text-lg text-gray-300 mt-1">No one was eliminated.</p>
-          )}
+        <div className="border-b border-[#C4A861]/10 bg-[#0A0A0B] px-4 py-3">
+          <div className="max-w-2xl mx-auto text-center animate-fade-in-up">
+            <p className="text-[10px] text-[#6B7280] tracking-[0.2em] uppercase mb-1">Verdict</p>
+            {elimination.eliminated ? (
+              <div>
+                <p className="text-sm font-['Playfair_Display_SC'] text-[#DC2626]">
+                  {players.find((p) => p.id === elimination.eliminated)?.name ?? 'Unknown'}
+                </p>
+                <p className="text-[10px] text-[#6B7280]">
+                  was a <span className="text-[#C4A861] capitalize">{elimination.role}</span>
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-[#9CA3AF]">No one was condemned.</p>
+            )}
+          </div>
         </div>
       )}
 
       {!isAlive ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500">You are dead — spectating.</p>
+          <p className="text-xs text-[#6B7280]">The dead watch in silence.</p>
         </div>
       ) : voted || myVote ? (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <p className="text-green-400 text-lg mb-2">Vote cast!</p>
-          <p className="text-gray-400 text-sm">Waiting for others to vote...</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 animate-fade-in-scale">
+          <p className="text-sm text-[#22C55E] tracking-wide">Judgement cast.</p>
+          <p className="text-xs text-[#6B7280]">Awaiting the jury...</p>
         </div>
       ) : (
-        <div className="flex-1 px-4 py-4">
-          <div className="bg-gray-800 rounded-xl p-4 mb-4 shadow-xl">
-            <h2 className="text-sm text-gray-400 mb-2">Who should be eliminated?</h2>
-            <div className="bg-gray-700 rounded-lg divide-y divide-gray-600">
-              {alivePlayers.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelected(p.id)}
-                  className={`w-full text-left px-4 py-2.5 font-medium transition-colors ${
-                    selected === p.id
-                      ? 'bg-red-900/50 text-red-300'
-                      : 'hover:bg-gray-600 text-gray-200'
-                  }`}
-                >
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4">
+            <div className="max-w-2xl mx-auto">
+              <p className="text-[10px] text-[#6B7280] tracking-[0.2em] uppercase mb-3 text-center">
+                Who stands accused?
+              </p>
+              <div className="space-y-2 mb-5">
+                {alivePlayers.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelected(p.id)}
+                    className={`w-full text-left px-4 py-3 bg-[#12121A] border text-sm transition-all duration-200 ${
+                      selected === p.id
+                        ? 'border-[#DC2626]/50 text-[#DC2626]'
+                        : 'border-[#C4A861]/10 text-[#9CA3AF] hover:border-[#C4A861]/30'
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={handleSkip}
-              className="flex-1 bg-gray-600 hover:bg-gray-500 rounded py-2.5 font-medium"
-            >
-              Skip Vote
-            </button>
-            <button
-              onClick={handleVote}
-              disabled={!selected}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded py-2.5 font-medium"
-            >
-              Vote
-            </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSkip}
+                  className="flex-1 py-2.5 border border-[#6B7280]/30 text-[#6B7280] text-[11px]
+                             tracking-[0.15em] uppercase hover:bg-[#6B7280]/8
+                             transition-all duration-300"
+                >
+                  Spare All
+                </button>
+                <button
+                  onClick={handleVote}
+                  disabled={!selected}
+                  className="flex-1 py-2.5 border border-[#DC2626]/40 text-[#DC2626] text-[11px]
+                             tracking-[0.15em] uppercase hover:bg-[#DC2626]/8
+                             disabled:opacity-30 disabled:cursor-not-allowed
+                             transition-all duration-300"
+                >
+                  Condemn
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {votes.length > 0 && (
-        <div className="bg-gray-800 border-t border-gray-700 px-4 py-4">
-          <h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Live Tally</h3>
-          <div className="space-y-1">
-            {players.filter((p) => votes.some((v) => v.playerId === p.id)).map((p) => {
-              const vote = votes.find((v) => v.playerId === p.id)
-              const targetName = vote?.target === 'skip'
-                ? 'Skip'
-                : players.find((pl) => pl.id === vote?.target)?.name ?? 'Unknown'
-              return (
-                <div key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">{p.name}</span>
-                  <span className="text-gray-500">
-                    → <span className={vote?.target === 'skip' ? 'text-gray-400' : 'text-yellow-400'}>{targetName}</span>
-                  </span>
-                </div>
-              )
-            })}
+        <div className="border-t border-[#C4A861]/10 bg-[#12121A] px-4 py-3">
+          <div className="max-w-2xl mx-auto">
+            <p className="text-[10px] text-[#6B7280] tracking-[0.2em] uppercase mb-2 text-center">
+              The Jury Speaks
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {players.filter((p) => votes.some((v) => v.playerId === p.id)).map((p, i) => {
+                const vote = votes.find((v) => v.playerId === p.id)
+                const targetName = vote?.target === 'skip'
+                  ? 'spare'
+                  : players.find((pl) => pl.id === vote?.target)?.name ?? 'Unknown'
+                return (
+                  <div key={p.id} className="animate-vote-reveal text-[11px] text-[#9CA3AF]"
+                       style={{ animationDelay: `${i * 0.05}s` }}>
+                    <span className="text-[#C4A861]/70">{p.name}</span>
+                    <span className="text-[#6B7280] mx-1">→</span>
+                    <span className={vote?.target === 'skip' ? 'text-[#6B7280]' : 'text-[#DC2626]'}>
+                      {targetName}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

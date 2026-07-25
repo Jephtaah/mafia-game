@@ -24,32 +24,57 @@ export default function ResolutionScreen({ eliminated, role, players, timer }: R
 
   const name = eliminated ? players.find((p) => p.id === eliminated)?.name ?? 'Unknown' : null
 
+  const radius = 18
+  const circumference = 2 * Math.PI * radius
+  const progress = secondsLeft / timer
+  const offset = circumference * (1 - progress)
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-      <div className="bg-gray-800 rounded-xl p-8 w-full max-w-sm shadow-xl text-center">
-        <h1 className="text-2xl font-bold mb-4">Resolution</h1>
-
-        {eliminated ? (
-          <>
-            <p className="text-gray-300 mb-2">
-              <span className="font-bold text-red-400">{name}</span> was eliminated.
-            </p>
-            <p className="text-sm text-gray-500">They were a {role}.</p>
-          </>
-        ) : (
-          <p className="text-gray-300">No one was eliminated.</p>
-        )}
-
-        <div className="w-full h-1.5 bg-gray-700 rounded-full mt-6 mb-2 overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-1000 ease-linear"
-            style={{
-              width: `${(secondsLeft / timer) * 100}%`,
-              backgroundColor: secondsLeft > 3 ? '#3b82f6' : '#ef4444',
-            }}
-          />
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-sm animate-fade-in-scale text-center">
+        <div className="mb-8">
+          <h1 className="text-3xl font-['Playfair_Display_SC'] text-[#C4A861] tracking-[0.08em]">
+            DAWN BREAKS
+          </h1>
+          <div className="w-8 h-px bg-[#C4A861]/25 mx-auto mt-3" />
         </div>
-        <p className="text-xs text-gray-500">Day begins in {secondsLeft}s...</p>
+
+        <div className="border border-[#C4A861]/15 bg-[#12121A] p-8 mb-6">
+          {eliminated ? (
+            <div className="animate-fade-in-up">
+              <p className="text-xs text-[#6B7280] tracking-[0.15em] uppercase mb-3">
+                The town has spoken
+              </p>
+              <p className="text-2xl font-['Playfair_Display_SC'] text-[#DC2626] mb-2">
+                {name}
+              </p>
+              <p className="text-xs text-[#6B7280]">
+                They were <span className="text-[#C4A861] capitalize">{role}</span>.
+              </p>
+            </div>
+          ) : (
+            <div className="animate-fade-in-up">
+              <p className="text-lg font-['Playfair_Display_SC'] text-[#9CA3AF] mb-1">
+                No One Was Lost
+              </p>
+              <p className="text-xs text-[#6B7280]">Mercifully, the night took no one.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-center gap-2">
+          <svg viewBox="0 0 48 48" className="w-10 h-10">
+            <circle cx="24" cy="24" r={radius} fill="none" stroke="rgba(196,168,97,0.12)" strokeWidth="3" />
+            <circle cx="24" cy="24" r={radius} fill="none" stroke="#C4A861" strokeWidth="3"
+              strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+              className="transition-all duration-1000 ease-linear" />
+            <text x="24" y="24" textAnchor="middle" dominantBaseline="central"
+              className="fill-[#C4A861] text-[10px] font-['JetBrains_Mono']">
+              {secondsLeft}
+            </text>
+          </svg>
+          <p className="text-[10px] text-[#6B7280] tracking-[0.15em] uppercase">Daybreak approaches</p>
+        </div>
       </div>
     </div>
   )

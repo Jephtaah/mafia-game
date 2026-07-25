@@ -115,7 +115,6 @@ function App() {
     stateRef.current = state
   }, [state])
 
-  // Attempt reconnect on mount if we have stored credentials
   useEffect(() => {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY)
     if (token && !reconnectStarted.current) {
@@ -124,7 +123,6 @@ function App() {
     }
   }, [connect])
 
-  // On WebSocket close, attempt reconnect with stored token
   useEffect(() => {
     onClose(() => {
       const s = stateRef.current
@@ -145,7 +143,6 @@ function App() {
     })
   }, [onClose, connect, addToast])
 
-  // Send reconnect message when WebSocket opens while reconnecting
   useEffect(() => {
     if (readyState === WebSocket.OPEN && state.screen === 'reconnecting') {
       const token = localStorage.getItem(STORAGE_TOKEN_KEY)
@@ -160,7 +157,6 @@ function App() {
     return ps.find((p) => p.id === pid)?.isAlive ?? true
   }, [])
 
-  // Helper to update a player's connected status in the players array
   const updatePlayerConnected = useCallback((players: PlayerInfo[], playerId: string, connected: boolean): PlayerInfo[] => {
     return players.map((p) => p.id === playerId ? { ...p, connected } : p)
   }, [])
@@ -181,7 +177,6 @@ function App() {
           error: '',
         })
       } else if (msg.type === 'resume_state') {
-        // Restore from reconnect
         const token = localStorage.getItem(STORAGE_TOKEN_KEY) || ''
         const code = localStorage.getItem(STORAGE_CODE_KEY) || ''
         const myId = msg.playerId
@@ -262,7 +257,6 @@ function App() {
         }
       } else if (msg.type === 'error') {
         if (s.screen === 'reconnecting') {
-          // Reconnect failed — go back to join
           localStorage.removeItem(STORAGE_TOKEN_KEY)
           localStorage.removeItem(STORAGE_CODE_KEY)
           setState({ screen: 'join', error: msg.message })
@@ -496,12 +490,19 @@ function App() {
 
   if (state.screen === 'reconnecting') {
     screen = (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        <div className="bg-gray-800 rounded-xl p-8 w-full max-w-sm shadow-xl text-center">
-          <h1 className="text-2xl font-bold mb-4">Reconnecting...</h1>
-          <p className="text-gray-400 mb-4">Your connection was lost. Attempting to reconnect.</p>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-md text-center animate-fade-in-up">
+          <div className="mb-6 flex justify-center">
+            <div className="w-12 h-12 border-2 border-[#C4A861]/25 border-t-[#C4A861] rounded-full animate-spin" />
+          </div>
+          <h1 className="text-2xl font-['Playfair_Display_SC'] text-[#C4A861] tracking-[0.08em] mb-2">
+            RECONNECTING
+          </h1>
+          <p className="text-xs text-[#6B7280] mb-6">
+            Your connection was lost. Attempting to restore it.
+          </p>
           {state.error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-2 rounded mb-4 text-sm">
+            <div className="mb-6 p-3 border border-[#DC2626]/30 bg-[#DC2626]/5 text-[#DC2626] text-xs text-center">
               {state.error}
             </div>
           )}
@@ -512,9 +513,10 @@ function App() {
               setState({ screen: 'join', error: '' })
               clearCallbacks()
             }}
-            className="bg-gray-600 hover:bg-gray-500 rounded py-2 px-4 font-medium"
+            className="border border-[#6B7280]/40 text-[#6B7280] text-xs tracking-[0.15em] uppercase
+                       hover:bg-[#6B7280]/8 transition-all duration-300 px-5 py-2.5"
           >
-            Back to Lobby
+            Return to Start
           </button>
         </div>
       </div>
@@ -619,13 +621,15 @@ function App() {
   }
 
   return (
-    <div className="relative min-h-screen">
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 w-72">
+    <div className="relative min-h-screen bg-[#0A0A0B] text-[#E8E8E8] blinds-overlay">
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 w-80">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
-              t.type === 'warning' ? 'bg-red-700' : 'bg-green-700'
+            className={`px-4 py-3 border text-sm ${
+              t.type === 'warning'
+                ? 'border-[#DC2626]/30 bg-[#DC2626]/10 text-[#DC2626]'
+                : 'border-[#22C55E]/30 bg-[#22C55E]/10 text-[#22C55E]'
             } ${t.leaving ? 'animate-toast-out' : 'animate-toast-in'}`}
           >
             {t.message}
