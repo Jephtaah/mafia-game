@@ -47,7 +47,18 @@ export default function VotingScreen({ players, playerId, isAlive, send, timer, 
   return (
     <div className="min-h-screen flex flex-col bg-gray-900 text-white">
       <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
-        <h1 className="text-lg font-bold">Voting</h1>
+        <div className="flex flex-col flex-1">
+          <h1 className="text-lg font-bold">Voting</h1>
+          <div className="w-full h-1 bg-gray-700 rounded-full mt-2 overflow-hidden max-w-[200px]">
+            <div
+              className="h-full rounded-full transition-all duration-1000 ease-linear"
+              style={{
+                width: `${(secondsLeft / timer) * 100}%`,
+                backgroundColor: secondsLeft > 10 ? '#3b82f6' : secondsLeft > 5 ? '#f59e0b' : '#ef4444',
+              }}
+            />
+          </div>
+        </div>
         <span className="text-sm text-gray-400">{secondsLeft}s remaining</span>
       </div>
 

@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 interface ResolutionScreenProps {
   eliminated: string | null
   role: string | null
@@ -6,6 +8,20 @@ interface ResolutionScreenProps {
 }
 
 export default function ResolutionScreen({ eliminated, role, players, timer }: ResolutionScreenProps) {
+  const [secondsLeft, setSecondsLeft] = useState(timer)
+  const [prevTimer, setPrevTimer] = useState(timer)
+
+  if (timer !== prevTimer) {
+    setPrevTimer(timer)
+    setSecondsLeft(timer)
+  }
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return
+    const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(id)
+  }, [secondsLeft])
+
   const name = eliminated ? players.find((p) => p.id === eliminated)?.name ?? 'Unknown' : null
 
   return (
@@ -24,7 +40,16 @@ export default function ResolutionScreen({ eliminated, role, players, timer }: R
           <p className="text-gray-300">No one was eliminated.</p>
         )}
 
-        <p className="text-xs text-gray-500 mt-6">Day begins in {timer}s...</p>
+        <div className="w-full h-1.5 bg-gray-700 rounded-full mt-6 mb-2 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-1000 ease-linear"
+            style={{
+              width: `${(secondsLeft / timer) * 100}%`,
+              backgroundColor: secondsLeft > 3 ? '#3b82f6' : '#ef4444',
+            }}
+          />
+        </div>
+        <p className="text-xs text-gray-500">Day begins in {secondsLeft}s...</p>
       </div>
     </div>
   )

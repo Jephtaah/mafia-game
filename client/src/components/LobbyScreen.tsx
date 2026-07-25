@@ -40,8 +40,15 @@ export default function LobbyScreen({ send, roomCode, isHost, players, error, on
                   {p.name}
                   {p.isHost && <span className="ml-2 text-xs bg-yellow-600 text-yellow-100 px-1.5 py-0.5 rounded">HOST</span>}
                 </span>
-                <span className={`text-xs ${p.connected ? 'text-green-400' : 'text-gray-500'}`}>
-                  {p.connected ? 'online' : 'disconnected'}
+                <span className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                    p.connected
+                      ? 'bg-green-400 animate-pulse-dot'
+                      : 'bg-gray-500'
+                  }`} />
+                  <span className={`text-xs ${p.connected ? 'text-green-400' : 'text-gray-500'}`}>
+                    {p.connected ? 'online' : 'disconnected'}
+                  </span>
                 </span>
               </div>
             ))}

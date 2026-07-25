@@ -13,6 +13,13 @@ import type { ServerMessage, PlayerInfo } from './types/messages'
 const STORAGE_TOKEN_KEY = 'mafia_token'
 const STORAGE_CODE_KEY = 'mafia_code'
 
+interface Toast {
+  id: number
+  message: string
+  type: 'info' | 'warning'
+  leaving: boolean
+}
+
 interface ChatMessage {
   playerId: string
   name: string
@@ -23,7 +30,7 @@ type AppState =
   | { screen: 'join'; error: string }
   | { screen: 'reconnecting'; error: string }
   | { screen: 'lobby'; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; error: string }
-  | { screen: 'role_reveal'; role: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; timer: number }
+  | { screen: 'role_reveal'; role: string; desc?: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; timer: number }
   | { screen: 'night'; role: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; isAlive: boolean; timer: number; votedCount: number; waiting: boolean }
   | { screen: 'resolution'; eliminated: string | null; eliminatedRole: string | null; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; role: string; fellowImpostors?: PlayerInfo[]; timer: number }
   | { screen: 'day'; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; role: string; fellowImpostors?: PlayerInfo[]; timer: number; isAlive: boolean; chatMessages: ChatMessage[] }
@@ -38,11 +45,71 @@ function getInitialState(): AppState {
   return { screen: 'join', error: '' }
 }
 
+let toastIdCounter = 0
+
+let audioCtx: AudioContext | null = null
+function playPhaseSound(phase: string) {
+  try {
+    if (!audioCtx) {
+      const AC: typeof AudioContext = (window as typeof window & { webkitAudioContext?: typeof AudioContext }).AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!
+      audioCtx = new AC()
+    }
+    const osc = audioCtx.createOscillator()
+    const gain = audioCtx.createGain()
+    osc.connect(gain)
+    gain.connect(audioCtx.destination)
+    gain.gain.value = 0.08
+    const now = audioCtx.currentTime
+    switch (phase) {
+      case 'night':
+        osc.frequency.setValueAtTime(220, now)
+        osc.frequency.linearRampToValueAtTime(180, now + 0.4)
+        osc.start(now)
+        osc.stop(now + 0.4)
+        break
+      case 'day':
+        osc.frequency.setValueAtTime(440, now)
+        osc.frequency.linearRampToValueAtTime(520, now + 0.25)
+        osc.start(now)
+        osc.stop(now + 0.25)
+        break
+      case 'voting':
+        osc.frequency.setValueAtTime(330, now)
+        osc.type = 'square'
+        osc.start(now)
+        osc.stop(now + 0.15)
+        break
+      case 'resolution':
+        osc.frequency.setValueAtTime(260, now)
+        osc.frequency.linearRampToValueAtTime(220, now + 0.5)
+        gain.gain.linearRampToValueAtTime(0, now + 0.5)
+        osc.start(now)
+        osc.stop(now + 0.5)
+        break
+    }
+  } catch {
+    // Audio not supported
+  }
+}
+
 function App() {
   const [state, setState] = useState<AppState>(getInitialState)
+  const [toasts, setToasts] = useState<Toast[]>([])
   const { send, onMessage, onClose, readyState, connect, clearCallbacks } = useWebSocket()
   const stateRef = useRef(state)
   const reconnectStarted = useRef(false)
+  const retryCount = useRef(0)
+
+  const addToast = useCallback((message: string, type: 'info' | 'warning') => {
+    const id = ++toastIdCounter
+    setToasts((prev) => [...prev, { id, message, type, leaving: false }])
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => t.id === id ? { ...t, leaving: true } : t))
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id))
+      }, 300)
+    }, 3000)
+  }, [])
 
   useEffect(() => {
     stateRef.current = state
@@ -62,22 +129,28 @@ function App() {
     onClose(() => {
       const s = stateRef.current
       if (s.screen === 'join' || s.screen === 'game_over' || s.screen === 'reconnecting') {
-        return // don't reconnect from these screens
+        retryCount.current = 0
+        return
       }
       const token = localStorage.getItem(STORAGE_TOKEN_KEY)
       if (!token) return
+      const attempt = retryCount.current + 1
+      retryCount.current = attempt
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000)
       setState({ screen: 'reconnecting', error: '' })
+      addToast(`Connection lost. Retrying in ${Math.round(delay / 1000)}s...`, 'warning')
       setTimeout(() => {
         connect('ws://localhost:3001/ws')
-      }, 1000)
+      }, delay)
     })
-  }, [onClose, connect])
+  }, [onClose, connect, addToast])
 
   // Send reconnect message when WebSocket opens while reconnecting
   useEffect(() => {
     if (readyState === WebSocket.OPEN && state.screen === 'reconnecting') {
       const token = localStorage.getItem(STORAGE_TOKEN_KEY)
       if (token) {
+        retryCount.current = 0
         send({ type: 'reconnect', token })
       }
     }
@@ -205,6 +278,10 @@ function App() {
           return prev
         })
       } else if (msg.type === 'player_disconnected') {
+        const name = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
+          ? s.players.find((p) => p.id === msg.playerId)?.name
+          : null
+        if (name) addToast(`${name} disconnected`, 'warning')
         setState((prev) => {
           if ('players' in prev && prev.screen !== 'game_over') {
             return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, false) }
@@ -212,6 +289,10 @@ function App() {
           return prev
         })
       } else if (msg.type === 'player_reconnected') {
+        const name = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
+          ? s.players.find((p) => p.id === msg.playerId)?.name
+          : null
+        if (name) addToast(`${name} reconnected`, 'info')
         setState((prev) => {
           if ('players' in prev && prev.screen !== 'game_over') {
             return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, true) }
@@ -223,6 +304,7 @@ function App() {
           setState({
             screen: 'role_reveal',
             role: msg.role,
+            desc: msg.desc,
             fellowImpostors: msg.fellowImpostors,
             code: s.code,
             playerId: s.playerId,
@@ -279,6 +361,13 @@ function App() {
           }
           return prev
         })
+      } else if (msg.type === 'investigation_result') {
+        const targetName = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
+          ? s.players.find((p) => p.id === msg.target)?.name
+          : null
+        if (targetName) {
+          addToast(msg.isImpostor ? `${targetName} is an impostor!` : `${targetName} is not an impostor.`, msg.isImpostor ? 'warning' : 'info')
+        }
       } else if (msg.type === 'elimination') {
         setState((prev) => {
           if (prev.screen === 'voting') {
@@ -299,6 +388,7 @@ function App() {
           })
         }
       } else if (msg.type === 'phase_change') {
+        playPhaseSound(msg.phase)
         setState((prev) => {
           if (prev.screen === 'role_reveal' || prev.screen === 'lobby') {
             if (msg.phase === 'night') {
@@ -396,14 +486,16 @@ function App() {
         })
       }
     })
-  }, [onMessage, myAlive, updatePlayerConnected, clearCallbacks])
+  }, [onMessage, myAlive, updatePlayerConnected, clearCallbacks, addToast])
 
   const clearError = useCallback(() => {
     setState((s) => ({ ...s, error: '' } as AppState))
   }, [])
 
+  let screen: React.ReactNode
+
   if (state.screen === 'reconnecting') {
-    return (
+    screen = (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
         <div className="bg-gray-800 rounded-xl p-8 w-full max-w-sm shadow-xl text-center">
           <h1 className="text-2xl font-bold mb-4">Reconnecting...</h1>
@@ -427,12 +519,11 @@ function App() {
         </div>
       </div>
     )
-  }
-
-  if (state.screen === 'role_reveal') {
-    return (
+  } else if (state.screen === 'role_reveal') {
+    screen = (
       <RoleReveal
         role={state.role}
+        desc={state.desc}
         fellowImpostors={state.fellowImpostors}
         onDismiss={() => {
           setState({
@@ -452,10 +543,8 @@ function App() {
         }}
       />
     )
-  }
-
-  if (state.screen === 'resolution') {
-    return (
+  } else if (state.screen === 'resolution') {
+    screen = (
       <ResolutionScreen
         eliminated={state.eliminated}
         role={state.eliminatedRole}
@@ -463,10 +552,8 @@ function App() {
         timer={state.timer}
       />
     )
-  }
-
-  if (state.screen === 'day') {
-    return (
+  } else if (state.screen === 'day') {
+    screen = (
       <ChatScreen
         messages={state.chatMessages}
         isAlive={state.isAlive}
@@ -474,10 +561,8 @@ function App() {
         timer={state.timer}
       />
     )
-  }
-
-  if (state.screen === 'night') {
-    return (
+  } else if (state.screen === 'night') {
+    screen = (
       <NightScreen
         role={state.role}
         players={state.players}
@@ -490,10 +575,8 @@ function App() {
         waiting={state.waiting}
       />
     )
-  }
-
-  if (state.screen === 'voting') {
-    return (
+  } else if (state.screen === 'voting') {
+    screen = (
       <VotingScreen
         players={state.players}
         playerId={state.playerId}
@@ -504,20 +587,16 @@ function App() {
         elimination={state.elimination}
       />
     )
-  }
-
-  if (state.screen === 'game_over') {
-    return (
+  } else if (state.screen === 'game_over') {
+    screen = (
       <GameOverScreen
         winner={state.winner}
         players={state.players}
         playerId={state.playerId}
       />
     )
-  }
-
-  if (state.screen === 'lobby') {
-    return (
+  } else if (state.screen === 'lobby') {
+    screen = (
       <LobbyScreen
         send={send}
         roomCode={state.code}
@@ -527,16 +606,36 @@ function App() {
         onClearError={clearError}
       />
     )
+  } else {
+    screen = (
+      <JoinScreen
+        send={send}
+        readyState={readyState}
+        connect={connect}
+        error={state.error}
+        onClearError={clearError}
+      />
+    )
   }
 
   return (
-    <JoinScreen
-      send={send}
-      readyState={readyState}
-      connect={connect}
-      error={state.error}
-      onClearError={clearError}
-    />
+    <div className="relative min-h-screen">
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 w-72">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
+              t.type === 'warning' ? 'bg-red-700' : 'bg-green-700'
+            } ${t.leaving ? 'animate-toast-out' : 'animate-toast-in'}`}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
+      <div className="animate-phase-enter" key={state.screen}>
+        {screen}
+      </div>
+    </div>
   )
 }
 

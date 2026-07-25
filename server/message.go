@@ -117,6 +117,15 @@ func chatMessage(p *Player, text string) []byte {
 	return b
 }
 
+func investigationResultMsg(targetID string, isImpostor bool) []byte {
+	b, _ := json.Marshal(map[string]interface{}{
+		"type":       "investigation_result",
+		"target":     targetID,
+		"isImpostor": isImpostor,
+	})
+	return b
+}
+
 func playerDisconnectedMsg(playerID string) []byte {
 	b, _ := json.Marshal(map[string]interface{}{
 		"type":     "player_disconnected",

@@ -15,7 +15,20 @@ interface ChatScreenProps {
 
 export default function ChatScreen({ messages, isAlive, onSend, timer }: ChatScreenProps) {
   const [input, setInput] = useState('')
+  const [secondsLeft, setSecondsLeft] = useState(timer)
+  const [prevTimer, setPrevTimer] = useState(timer)
   const listRef = useRef<HTMLDivElement>(null)
+
+  if (timer !== prevTimer) {
+    setPrevTimer(timer)
+    setSecondsLeft(timer)
+  }
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return
+    const id = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000)
+    return () => clearInterval(id)
+  }, [secondsLeft])
 
   useEffect(() => {
     if (listRef.current) {
@@ -40,8 +53,19 @@ export default function ChatScreen({ messages, isAlive, onSend, timer }: ChatScr
   return (
     <div className="min-h-screen flex flex-col bg-gray-900 text-white">
       <div className="bg-gray-800 px-4 py-3 flex items-center justify-between border-b border-gray-700">
-        <h1 className="text-lg font-bold">Day Phase</h1>
-        <span className="text-sm text-gray-400">{timer}s remaining</span>
+        <div className="flex flex-col flex-1">
+          <h1 className="text-lg font-bold">Day Phase</h1>
+          <div className="w-full h-1 bg-gray-700 rounded-full mt-2 overflow-hidden max-w-[200px]">
+            <div
+              className="h-full rounded-full transition-all duration-1000 ease-linear"
+              style={{
+                width: `${(secondsLeft / timer) * 100}%`,
+                backgroundColor: secondsLeft > 15 ? '#3b82f6' : secondsLeft > 5 ? '#f59e0b' : '#ef4444',
+              }}
+            />
+          </div>
+        </div>
+        <span className="text-sm text-gray-400">{secondsLeft}s remaining</span>
       </div>
 
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
