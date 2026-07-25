@@ -20,7 +20,7 @@ type AppState =
   | { screen: 'join'; error: string }
   | { screen: 'lobby'; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; error: string }
   | { screen: 'role_reveal'; role: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; timer: number }
-  | { screen: 'night'; role: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; timer: number; votedCount: number; waiting: boolean }
+  | { screen: 'night'; role: string; fellowImpostors?: PlayerInfo[]; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; isAlive: boolean; timer: number; votedCount: number; waiting: boolean }
   | { screen: 'resolution'; eliminated: string | null; eliminatedRole: string | null; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; role: string; fellowImpostors?: PlayerInfo[]; timer: number }
   | { screen: 'day'; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; role: string; fellowImpostors?: PlayerInfo[]; timer: number; isAlive: boolean; chatMessages: ChatMessage[] }
   | { screen: 'voting'; code: string; playerId: string; token: string; players: PlayerInfo[]; isHost: boolean; role: string; fellowImpostors?: PlayerInfo[]; timer: number; isAlive: boolean; votes: { playerId: string; target: string }[] }
@@ -34,6 +34,10 @@ function App() {
   useEffect(() => {
     stateRef.current = state
   }, [state])
+
+  const myAlive = useCallback((ps: PlayerInfo[], pid: string) => {
+    return ps.find((p) => p.id === pid)?.isAlive ?? true
+  }, [])
 
   useEffect(() => {
     onMessage((msg: ServerMessage) => {
@@ -143,6 +147,7 @@ function App() {
                 token: prev.token,
                 players: prev.players,
                 isHost: prev.isHost,
+                isAlive: true,
                 timer: msg.timer,
                 votedCount: 0,
                 waiting: (fellowImpostors?.length ?? 0) > 0,
@@ -162,7 +167,7 @@ function App() {
                 role: prev.role,
                 fellowImpostors: prev.fellowImpostors,
                 timer: msg.timer,
-                isAlive: prev.eliminated !== prev.playerId,
+                isAlive: myAlive(prev.players, prev.playerId),
                 chatMessages: [],
               }
             } else {
@@ -180,7 +185,7 @@ function App() {
                 role: prev.role,
                 fellowImpostors: prev.fellowImpostors,
                 timer: msg.timer,
-                isAlive: prev.isAlive,
+                isAlive: myAlive(prev.players, prev.playerId),
                 votes: [],
               }
             }
@@ -194,6 +199,7 @@ function App() {
                 token: prev.token,
                 players: prev.players,
                 isHost: prev.isHost,
+                isAlive: myAlive(prev.players, prev.playerId),
                 timer: msg.timer,
                 votedCount: 0,
                 waiting: (prev.fellowImpostors?.length ?? 0) > 0,
@@ -211,6 +217,7 @@ function App() {
                 token: prev.token,
                 players: prev.players,
                 isHost: prev.isHost,
+                isAlive: myAlive(prev.players, prev.playerId),
                 timer: msg.timer,
                 votedCount: 0,
                 waiting: (prev.fellowImpostors?.length ?? 0) > 0,
@@ -222,7 +229,7 @@ function App() {
         })
       }
     })
-  }, [onMessage])
+  }, [onMessage, myAlive])
 
   const clearError = useCallback(() => {
     setState((s) => ({ ...s, error: '' } as AppState))
@@ -243,6 +250,7 @@ function App() {
             token: state.token,
             players: state.players,
             isHost: state.isHost,
+            isAlive: true,
             timer: state.timer,
             votedCount: 0,
             waiting: (state.fellowImpostors?.length ?? 0) > 0,
@@ -280,6 +288,7 @@ function App() {
         role={state.role}
         players={state.players}
         playerId={state.playerId}
+        isAlive={state.isAlive}
         fellowImpostors={state.fellowImpostors}
         send={send}
         timer={state.timer}

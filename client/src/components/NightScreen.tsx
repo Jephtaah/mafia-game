@@ -5,6 +5,7 @@ interface NightScreenProps {
   role: string
   players: PlayerInfo[]
   playerId: string
+  isAlive: boolean
   fellowImpostors?: PlayerInfo[]
   send: (msg: object) => void
   timer: number
@@ -12,7 +13,7 @@ interface NightScreenProps {
   waiting: boolean
 }
 
-export default function NightScreen({ role, players, playerId, fellowImpostors, send, timer, votedCount, waiting }: NightScreenProps) {
+export default function NightScreen({ role, players, playerId, isAlive, fellowImpostors, send, timer, votedCount, waiting }: NightScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(timer)
   const [prevTimer, setPrevTimer] = useState(timer)
@@ -31,7 +32,7 @@ export default function NightScreen({ role, players, playerId, fellowImpostors, 
   }, [secondsLeft])
 
   const aliveTargets = players.filter(
-    (p) => p.id !== playerId && p.connected && !fellowImpostors?.some((f) => f.id === p.id)
+    (p) => p.id !== playerId && p.isAlive && !fellowImpostors?.some((f) => f.id === p.id)
   )
 
   const handleConfirm = () => {
@@ -47,9 +48,9 @@ export default function NightScreen({ role, players, playerId, fellowImpostors, 
           {secondsLeft}s remaining
         </div>
 
-        {!isImpostor ? (
+        {!isImpostor || !isAlive ? (
           <div className="text-center text-gray-300 py-8">
-            <p className="text-lg mb-2">You are safe for now...</p>
+            <p className="text-lg mb-2">{isAlive ? 'You are safe for now...' : 'You are dead — spectating.'}</p>
             <p className="text-sm text-gray-500">Waiting for night to end.</p>
           </div>
         ) : (

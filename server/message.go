@@ -6,6 +6,7 @@ type PlayerInfo struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsHost    bool   `json:"isHost"`
+	IsAlive   bool   `json:"isAlive"`
 	Connected bool   `json:"connected"`
 }
 
@@ -17,7 +18,7 @@ func errorMsg(msg string) []byte {
 func roomCreatedMsg(r *Room, p *Player) []byte {
 	players := make([]PlayerInfo, len(r.Players))
 	for i, pl := range r.Players {
-		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, Connected: pl.Connected}
+		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
 	}
 	b, _ := json.Marshal(map[string]interface{}{
 		"type":     "room_created",
@@ -33,7 +34,7 @@ func roomCreatedMsg(r *Room, p *Player) []byte {
 func playerListMsg(r *Room) []byte {
 	players := make([]PlayerInfo, len(r.Players))
 	for i, pl := range r.Players {
-		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, Connected: pl.Connected}
+		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
 	}
 	b, _ := json.Marshal(map[string]interface{}{
 		"type":    "player_list",

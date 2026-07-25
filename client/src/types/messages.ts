@@ -2,6 +2,7 @@ export interface PlayerInfo {
   id: string;
   name: string;
   isHost: boolean;
+  isAlive: boolean;
   connected: boolean;
 }
 

@@ -273,6 +273,7 @@ func (r *Room) handlePhaseTimerExpiry() {
 					target.IsAlive = false
 					r.EliminatedPlayers = append(r.EliminatedPlayers, r.nightResult.eliminatedID)
 				}
+				r.broadcastAll(playerListMsg(r))
 			}
 			r.nightResult = nil
 			winner := r.checkWin()
@@ -363,6 +364,7 @@ func (r *Room) resolveVoting() {
 			r.EliminatedPlayers = append(r.EliminatedPlayers, elimID)
 		}
 		r.broadcastAll(eliminationMsg(elimID, elimRole))
+		r.broadcastAll(playerListMsg(r))
 	} else {
 		r.broadcastAll(eliminationMsg("", ""))
 	}
@@ -482,7 +484,7 @@ func buildRoleReveal(p *Player, players []*Player, nightSeconds int) []byte {
 		var fellows []PlayerInfo
 		for _, pl := range players {
 			if pl.Role == "impostor" && pl.ID != p.ID {
-				fellows = append(fellows, PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, Connected: pl.Connected})
+				fellows = append(fellows, PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected})
 			}
 		}
 		b, _ := json.Marshal(map[string]interface{}{

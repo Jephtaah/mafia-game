@@ -27,7 +27,7 @@ export default function VotingScreen({ players, playerId, isAlive, send, timer, 
     return () => clearInterval(id)
   }, [secondsLeft])
 
-  const alivePlayers = players.filter((p) => p.id !== playerId && p.connected)
+  const alivePlayers = players.filter((p) => p.id !== playerId && p.isAlive)
 
   const handleVote = () => {
     if (!selected || voted) return
