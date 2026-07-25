@@ -8,9 +8,10 @@ interface VotingScreenProps {
   send: (msg: object) => void
   timer: number
   votes: { playerId: string; target: string }[]
+  elimination: { eliminated: string | null; role: string | null } | null
 }
 
-export default function VotingScreen({ players, playerId, isAlive, send, timer, votes }: VotingScreenProps) {
+export default function VotingScreen({ players, playerId, isAlive, send, timer, votes, elimination }: VotingScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [voted, setVoted] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(timer)
@@ -49,6 +50,22 @@ export default function VotingScreen({ players, playerId, isAlive, send, timer, 
         <h1 className="text-lg font-bold">Voting</h1>
         <span className="text-sm text-gray-400">{secondsLeft}s remaining</span>
       </div>
+
+      {elimination && (
+        <div className="bg-gray-800 mx-4 mt-4 rounded-xl p-4 text-center border border-gray-700">
+          <p className="text-sm text-gray-400">Elimination Result</p>
+          {elimination.eliminated ? (
+            <>
+              <p className="text-lg font-bold text-red-400 mt-1">
+                {players.find((p) => p.id === elimination.eliminated)?.name ?? 'Unknown'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">was a {elimination.role}.</p>
+            </>
+          ) : (
+            <p className="text-lg text-gray-300 mt-1">No one was eliminated.</p>
+          )}
+        </div>
+      )}
 
       {!isAlive ? (
         <div className="flex-1 flex items-center justify-center">

@@ -45,8 +45,10 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 		handleCreateRoom(conn, raw)
 	case "join_room":
 		handleJoinRoom(conn, raw)
+	case "reconnect":
+		handleReconnect(conn, raw)
 	default:
-		conn.WriteMessage(websocket.TextMessage, errorMsg("expected create_room or join_room as first message"))
+		conn.WriteMessage(websocket.TextMessage, errorMsg("expected create_room, join_room, or reconnect as first message"))
 		conn.Close()
 	}
 }
@@ -145,6 +147,48 @@ func handleJoinRoom(conn *websocket.Conn, raw []byte) {
 
 	playerID := <-resultCh
 	log.Printf("handleJoinRoom: got playerID=%q", playerID)
+	if playerID == "" {
+		conn.Close()
+		return
+	}
+
+	spawnReadWrite(conn, sendCh, room, playerID)
+}
+
+func handleReconnect(conn *websocket.Conn, raw []byte) {
+	var m struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		conn.WriteMessage(websocket.TextMessage, errorMsg("invalid json"))
+		conn.Close()
+		return
+	}
+	if m.Token == "" {
+		conn.WriteMessage(websocket.TextMessage, errorMsg("missing token"))
+		conn.Close()
+		return
+	}
+
+	room, ok := hub.LookupRoomByToken(m.Token)
+	if !ok {
+		conn.WriteMessage(websocket.TextMessage, errorMsg("session expired"))
+		conn.Close()
+		return
+	}
+
+	sendCh := make(chan []byte, 64)
+	resultCh := make(chan string, 1)
+
+	room.Intents <- Intent{
+		Type:   IntentReconnect,
+		Token:  m.Token,
+		Conn:   conn,
+		Send:   sendCh,
+		Result: resultCh,
+	}
+
+	playerID := <-resultCh
 	if playerID == "" {
 		conn.Close()
 		return

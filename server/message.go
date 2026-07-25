@@ -125,6 +125,92 @@ func playerDisconnectedMsg(playerID string) []byte {
 	return b
 }
 
+func playerReconnectedMsg(playerID string) []byte {
+	b, _ := json.Marshal(map[string]interface{}{
+		"type":     "player_reconnected",
+		"playerId": playerID,
+	})
+	return b
+}
+
+func resumeStateMsg(r *Room, p *Player) []byte {
+	players := make([]PlayerInfo, len(r.Players))
+	for i, pl := range r.Players {
+		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
+	}
+	m := map[string]interface{}{
+		"type":     "resume_state",
+		"phase":    r.Phase,
+		"timer":    0,
+		"isAlive":  p.IsAlive,
+		"playerId": p.ID,
+		"players":  players,
+	}
+	if r.phaseTimer != nil {
+		for phase, sec := range map[string]int{"night": r.Config.NightSeconds, "day": r.Config.DaySeconds, "voting": r.Config.VoteSeconds} {
+			if r.Phase == phase {
+				m["timer"] = sec
+				break
+			}
+		}
+	}
+	if r.Phase == "night" && r.nightState != nil {
+		voted := make([]string, 0)
+		for _, pl := range r.Players {
+			if pl.Role == "impostor" {
+				if _, ok := r.nightState.Targets[pl.ID]; ok {
+					voted = append(voted, pl.ID)
+				}
+			}
+		}
+		impostorCount := 0
+		for _, pl := range r.Players {
+			if pl.Role == "impostor" {
+				impostorCount++
+			}
+		}
+		m["voted"] = voted
+		m["waiting"] = len(voted) < impostorCount
+	}
+	if r.Phase == "voting" && r.voteState != nil {
+		type voteEntry struct {
+			PlayerID string `json:"playerId"`
+			Target   string `json:"target"`
+		}
+		votes := make([]voteEntry, 0)
+		for pid, target := range r.voteState.Votes {
+			votes = append(votes, voteEntry{PlayerID: pid, Target: target})
+		}
+		m["votes"] = votes
+	}
+	if r.Phase == "resolution" && r.nightResult != nil {
+		var elimPtr *string
+		var rolePtr *string
+		if r.nightResult.eliminatedID != "" {
+			elimPtr = &r.nightResult.eliminatedID
+		}
+		if r.nightResult.role != "" {
+			rolePtr = &r.nightResult.role
+		}
+		m["eliminated"] = elimPtr
+		m["eliminatedRole"] = rolePtr
+	}
+	if p.Role != "" {
+		m["role"] = p.Role
+		if p.Role == "impostor" {
+			var fellows []PlayerInfo
+			for _, pl := range r.Players {
+				if pl.Role == "impostor" && pl.ID != p.ID {
+					fellows = append(fellows, PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected})
+				}
+			}
+			m["fellowImpostors"] = fellows
+		}
+	}
+	b, _ := json.Marshal(m)
+	return b
+}
+
 func voteTallyMsg(vs *VoteState, players []*Player) []byte {
 	type voteEntry struct {
 		PlayerID string `json:"playerId"`

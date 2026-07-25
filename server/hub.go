@@ -8,12 +8,33 @@ import (
 )
 
 type Hub struct {
-	mu    sync.RWMutex
-	Rooms map[string]*Room
+	mu     sync.RWMutex
+	Rooms  map[string]*Room
+	tokens map[string]string // token -> roomCode
 }
 
 func NewHub() *Hub {
-	return &Hub{Rooms: make(map[string]*Room)}
+	return &Hub{
+		Rooms:  make(map[string]*Room),
+		tokens: make(map[string]string),
+	}
+}
+
+func (h *Hub) RegisterToken(token, code string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.tokens[token] = code
+}
+
+func (h *Hub) LookupRoomByToken(token string) (*Room, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	code, ok := h.tokens[token]
+	if !ok {
+		return nil, false
+	}
+	r, ok := h.Rooms[code]
+	return r, ok
 }
 
 func (h *Hub) CreateRoom(config RoomConfig) (*Room, string) {
@@ -28,8 +49,17 @@ func (h *Hub) CreateRoom(config RoomConfig) (*Room, string) {
 		done:      make(chan struct{}),
 		onTeardown: func(c string) {
 			h.mu.Lock()
+			// Clean up all tokens for this room
+			for token, roomCode := range h.tokens {
+				if roomCode == c {
+					delete(h.tokens, token)
+				}
+			}
 			delete(h.Rooms, c)
 			h.mu.Unlock()
+		},
+		onTokenRegister: func(token, code string) {
+			h.RegisterToken(token, code)
 		},
 	}
 	h.mu.Lock()

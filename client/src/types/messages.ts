@@ -18,7 +18,7 @@ export type ServerMessage =
   | { type: "vote_tally"; votes: { playerId: string; target: string }[] }
   | { type: "elimination"; eliminated: string | null; role: string | null }
   | { type: "game_over"; winner: string; players: { id: string; name: string; role: string; isAlive: boolean }[] }
-  | { type: "resume_state"; phase: string; timer: number; role?: string; fellowImpostors?: PlayerInfo[]; isAlive: boolean; players: PlayerInfo[] }
+  | { type: "resume_state"; phase: string; timer: number; role?: string; fellowImpostors?: PlayerInfo[]; isAlive: boolean; playerId: string; players: PlayerInfo[]; eliminated?: string | null; eliminatedRole?: string | null; voted?: string[]; waiting?: boolean; votes?: { playerId: string; target: string }[] }
   | { type: "player_disconnected"; playerId: string }
   | { type: "player_reconnected"; playerId: string };
 

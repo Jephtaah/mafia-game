@@ -82,7 +82,8 @@ type Room struct {
 	EliminatedPlayers []string // IDs of eliminated players, in order
 
 	done      chan struct{}
-	onTeardown func(code string)
+	onTeardown      func(code string)
+	onTokenRegister func(token, code string)
 }
 
 type nightResolution struct {
@@ -127,6 +128,8 @@ func (r *Room) handleIntent(in Intent) {
 		r.handleChat(in)
 	case IntentVote:
 		r.handleVote(in)
+	case IntentReconnect:
+		r.handleReconnect(in)
 	case IntentDisconnect:
 		r.handleDisconnect(in)
 	}
@@ -137,12 +140,76 @@ func (r *Room) handleDisconnect(in Intent) {
 	if p == nil || !p.Connected {
 		return
 	}
+	if r.Phase == "lobby" {
+		close(p.Send)
+		r.removePlayer(p.ID)
+		r.broadcastAll(playerListMsg(r))
+		return
+	}
+	// Mid-game: preserve seat and role, mark disconnected
 	p.Connected = false
 	p.DisconnectedAt = time.Now()
 	close(p.Send)
 	r.broadcastAll(playerDisconnectedMsg(p.ID))
-	if r.Phase == "lobby" {
-		r.broadcastAll(playerListMsg(r))
+	r.broadcastAll(playerListMsg(r))
+	if r.allDisconnected() {
+		now := time.Now()
+		r.roomEmptySince = &now
+	}
+}
+
+func (r *Room) handleReconnect(in Intent) {
+	p := r.findPlayerByToken(in.Token)
+	if p == nil {
+		r.sendToPlayer(in.Send, errorMsg("session expired"))
+		close(in.Send)
+		if in.Result != nil {
+			in.Result <- ""
+		}
+		return
+	}
+	if p.Connected {
+		// Previous connection is still alive — close it and take over
+		p.Conn.Close()
+		close(p.Send)
+	}
+	p.Conn = in.Conn
+	p.Send = in.Send
+	p.Connected = true
+	p.DisconnectedAt = time.Time{}
+	r.roomEmptySince = nil
+	r.sendTo(p, resumeStateMsg(r, p))
+	r.broadcastAll(playerReconnectedMsg(p.ID))
+	r.broadcastAll(playerListMsg(r))
+	if in.Result != nil {
+		in.Result <- p.ID
+	}
+}
+
+func (r *Room) allDisconnected() bool {
+	for _, p := range r.Players {
+		if p.Connected {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *Room) removePlayer(id string) {
+	idx := -1
+	for i, p := range r.Players {
+		if p.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return
+	}
+	r.Players = append(r.Players[:idx], r.Players[idx+1:]...)
+	if r.HostID == id && len(r.Players) > 0 {
+		r.Players[0].IsHost = true
+		r.HostID = r.Players[0].ID
 	}
 }
 
@@ -177,6 +244,9 @@ func (r *Room) handleJoin(in Intent) {
 		r.HostID = p.ID
 	}
 	r.Players = append(r.Players, p)
+	if r.onTokenRegister != nil {
+		r.onTokenRegister(p.Token, r.Code)
+	}
 	r.sendToPlayer(p.Send, roomCreatedMsg(r, p))
 	r.broadcastAll(playerListMsg(r))
 	if in.Result != nil {
@@ -398,12 +468,57 @@ func (r *Room) startPhase(phase string, seconds int) {
 
 func (r *Room) handleHousekeeping() {
 	now := time.Now()
-	if r.Phase == "ended" && !r.endedAt.IsZero() && now.Sub(r.endedAt) > 30*time.Second {
-		if r.onTeardown != nil {
-			r.onTeardown(r.Code)
+
+	// Step 6.3: Grace-period eviction — disconnected players become dead after grace window
+	if r.Phase != "lobby" && r.Phase != "ended" && r.Phase != "" {
+		for _, p := range r.Players {
+			if !p.Connected && !p.DisconnectedAt.IsZero() &&
+				now.Sub(p.DisconnectedAt) > ReconnectGraceSeconds*time.Second {
+				p.IsAlive = false
+				r.EliminatedPlayers = append(r.EliminatedPlayers, p.ID)
+				r.broadcastAll(eliminationMsg(p.ID, p.Role))
+				r.broadcastAll(playerListMsg(r))
+				winner := r.checkWin()
+				if winner != "" {
+					r.endGame(winner)
+					return
+				}
+			}
 		}
-		close(r.done)
 	}
+
+	// Step 6.4: Full-room-disconnect teardown
+	r.checkRoomEmptyTeardown(now)
+
+	// Step 6.5: Abandoned-lobby cleanup by age
+	r.checkLobbyAbandon(now)
+
+	// End-of-game cleanup: 30 seconds after game over, tear down
+	if r.Phase == "ended" && !r.endedAt.IsZero() && now.Sub(r.endedAt) > 30*time.Second {
+		r.teardown()
+	}
+}
+
+func (r *Room) checkRoomEmptyTeardown(now time.Time) {
+	if r.roomEmptySince == nil {
+		return
+	}
+	if now.Sub(*r.roomEmptySince) > RoomEmptyGraceSeconds*time.Second {
+		r.teardown()
+	}
+}
+
+func (r *Room) checkLobbyAbandon(now time.Time) {
+	if r.Phase == "lobby" && now.Sub(r.CreatedAt) > LobbyAbandonMinutes*time.Minute {
+		r.teardown()
+	}
+}
+
+func (r *Room) teardown() {
+	if r.onTeardown != nil {
+		r.onTeardown(r.Code)
+	}
+	close(r.done)
 }
 
 func (r *Room) sendToPlayer(ch chan []byte, msg []byte) {
@@ -414,6 +529,9 @@ func (r *Room) sendToPlayer(ch chan []byte, msg []byte) {
 }
 
 func (r *Room) sendTo(p *Player, msg []byte) {
+	if p == nil || !p.Connected || p.Send == nil {
+		return
+	}
 	select {
 	case p.Send <- msg:
 	default:

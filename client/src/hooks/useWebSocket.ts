@@ -6,13 +6,16 @@ interface UseWebSocketReturn {
   connect: (url: string) => void
   disconnect: () => void
   onMessage: (handler: (msg: ServerMessage) => void) => void
+  onClose: (handler: () => void) => void
   readyState: number
+  clearCallbacks: () => void
 }
 
 export function useWebSocket(): UseWebSocketReturn {
   const [readyState, setReadyState] = useState<number>(WebSocket.CLOSED)
   const wsRef = useRef<WebSocket | null>(null)
   const handlerRef = useRef<((msg: ServerMessage) => void) | null>(null)
+  const closeHandlerRef = useRef<(() => void) | null>(null)
 
   const connect = useCallback((url: string) => {
     const ws = new WebSocket(url)
@@ -35,6 +38,7 @@ export function useWebSocket(): UseWebSocketReturn {
     ws.onclose = () => {
       setReadyState(WebSocket.CLOSED)
       wsRef.current = null
+      closeHandlerRef.current?.()
     }
 
     ws.onerror = () => {
@@ -65,5 +69,14 @@ export function useWebSocket(): UseWebSocketReturn {
     handlerRef.current = handler
   }, [])
 
-  return { send, connect, disconnect, onMessage, readyState }
+  const onClose = useCallback((handler: () => void) => {
+    closeHandlerRef.current = handler
+  }, [])
+
+  const clearCallbacks = useCallback(() => {
+    handlerRef.current = null
+    closeHandlerRef.current = null
+  }, [])
+
+  return { send, connect, disconnect, onMessage, onClose, readyState, clearCallbacks }
 }
