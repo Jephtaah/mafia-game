@@ -21,6 +21,7 @@ const roleConfig: Record<string, { verb: string; heading: string; color: string;
 
 export default function NightScreen({ role, players, playerId, isAlive, fellowImpostors, send, timer, votedCount, waiting }: NightScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(timer)
   const [prevTimer, setPrevTimer] = useState(timer)
   const hasNightAction = (role === 'impostor' || role === 'detective' || role === 'doctor') && isAlive
@@ -38,8 +39,8 @@ export default function NightScreen({ role, players, playerId, isAlive, fellowIm
     return () => clearInterval(id)
   }, [secondsLeft])
 
-  const aliveTargets = players.filter((p) => {
-    if (!p.isAlive) return false
+  let aliveTargets = players.filter((p) => {
+    if (p.isAlive === false) return false
     if (role === 'impostor') {
       return p.id !== playerId && !fellowImpostors?.some((f) => f.id === p.id)
     }
@@ -49,8 +50,14 @@ export default function NightScreen({ role, players, playerId, isAlive, fellowIm
     return true
   })
 
+  if (aliveTargets.length === 0) {
+    aliveTargets = players.filter((p) => p.id !== playerId)
+  }
+
+  const isTimeUp = secondsLeft <= 0
+
   const handleConfirm = () => {
-    if (!selected) return
+    if (!selected || submitted || isTimeUp) return
     if (role === 'impostor') {
       send({ type: 'night_kill', target: selected })
     } else if (role === 'detective') {
@@ -58,6 +65,7 @@ export default function NightScreen({ role, players, playerId, isAlive, fellowIm
     } else if (role === 'doctor') {
       send({ type: 'protect', target: selected })
     }
+    setSubmitted(true)
   }
 
   const radius = 18
@@ -105,12 +113,13 @@ export default function NightScreen({ role, players, playerId, isAlive, fellowIm
               {aliveTargets.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => setSelected(p.id)}
+                  disabled={submitted || isTimeUp}
+                  onClick={() => !submitted && !isTimeUp && setSelected(p.id)}
                   className={`w-full text-left px-4 py-3 bg-[#12121A] border text-sm
                               ${selected === p.id
                                 ? `${config.border} ${config.color}`
                                 : 'border-[#C4A861]/10 text-[#9CA3AF]'
-                              } ${config.hover} transition-all duration-200`}
+                              } ${submitted || isTimeUp ? 'cursor-not-allowed opacity-75' : config.hover} transition-all duration-200`}
                 >
                   <span>{p.name}</span>
                   {p.id === playerId && (
@@ -120,31 +129,53 @@ export default function NightScreen({ role, players, playerId, isAlive, fellowIm
               ))}
             </div>
 
-            {role === 'impostor' && impostorCount > 1 && (
-              <div className="text-center mb-4">
-                {waiting ? (
-                  <p className="text-[11px] text-[#6B7280]">
-                    Awaiting accomplices ({votedCount}/{impostorCount} ready)
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-[#22C55E]">All impostors have chosen.</p>
-                )}
+            {isTimeUp ? (
+              <div className="text-center py-3 mb-2">
+                <p className="text-xs text-[#DC2626] tracking-[0.1em] uppercase mb-1">
+                  Time Expired
+                </p>
+                <p className="text-[11px] text-[#6B7280]">
+                  Night phase is concluding...
+                </p>
               </div>
-            )}
+            ) : submitted ? (
+              <div className="text-center py-3 mb-2">
+                <p className="text-xs text-[#22C55E] tracking-[0.1em] uppercase mb-1">
+                  Target Confirmed
+                </p>
+                <p className="text-[11px] text-[#6B7280]">
+                  Waiting for night phase to conclude...
+                </p>
+              </div>
+            ) : (
+              <>
+                {role === 'impostor' && impostorCount > 1 && (
+                  <div className="text-center mb-4">
+                    {waiting ? (
+                      <p className="text-[11px] text-[#6B7280]">
+                        Awaiting accomplices ({votedCount}/{impostorCount} ready)
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-[#22C55E]">All impostors have chosen.</p>
+                    )}
+                  </div>
+                )}
 
-            <button
-              onClick={handleConfirm}
-              disabled={!selected}
-              className="w-full py-2.5 border text-xs tracking-[0.2em] uppercase
-                         disabled:opacity-30 disabled:cursor-not-allowed
-                         transition-all duration-300"
-              style={{
-                borderColor: selected ? (role === 'impostor' ? '#DC2626' : role === 'detective' ? '#3B82F6' : '#22C55E') : 'rgba(196,168,97,0.3)',
-                color: selected ? (role === 'impostor' ? '#DC2626' : role === 'detective' ? '#3B82F6' : '#22C55E') : 'rgba(196,168,97,0.3)',
-              }}
-            >
-              {config.verb}
-            </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={!selected || isTimeUp}
+                  className="w-full py-2.5 border text-xs tracking-[0.2em] uppercase
+                             disabled:opacity-30 disabled:cursor-not-allowed
+                             transition-all duration-300"
+                  style={{
+                    borderColor: selected && !isTimeUp ? (role === 'impostor' ? '#DC2626' : role === 'detective' ? '#3B82F6' : '#22C55E') : 'rgba(196,168,97,0.3)',
+                    color: selected && !isTimeUp ? (role === 'impostor' ? '#DC2626' : role === 'detective' ? '#3B82F6' : '#22C55E') : 'rgba(196,168,97,0.3)',
+                  }}
+                >
+                  {config.verb}
+                </button>
+              </>
+            )}
           </>
         )}
       </div>

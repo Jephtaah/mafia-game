@@ -249,6 +249,7 @@ func (r *Room) handleJoin(in Intent) {
 		Token:     newToken(),
 		IsHost:    len(r.Players) == 0,
 		Connected: true,
+		IsAlive:   true,
 	}
 	if p.IsHost {
 		r.HostID = p.ID
@@ -280,6 +281,7 @@ func (r *Room) handleStartGame(in Intent) {
 	for _, pl := range r.Players {
 		r.sendTo(pl, buildRoleReveal(pl, r.Players, r.Config.NightSeconds))
 	}
+	r.broadcastAll(playerListMsg(r))
 	r.startPhase("night", r.Config.NightSeconds)
 }
 
@@ -695,11 +697,16 @@ func buildRoleReveal(p *Player, players []*Player, nightSeconds int) []byte {
 	default:
 		desc = "Complete tasks and find the impostors."
 	}
+	playerInfos := make([]PlayerInfo, len(players))
+	for i, pl := range players {
+		playerInfos[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
+	}
 	m := map[string]interface{}{
-		"type":  "role_reveal",
-		"role":  p.Role,
-		"desc":  desc,
-		"timer": nightSeconds,
+		"type":    "role_reveal",
+		"role":    p.Role,
+		"desc":    desc,
+		"timer":   nightSeconds,
+		"players": playerInfos,
 	}
 	if p.Role == "impostor" {
 		var fellows []PlayerInfo
