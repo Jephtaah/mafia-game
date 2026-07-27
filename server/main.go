@@ -255,8 +255,8 @@ func clampPhase(val, def int) int {
 
 func main() {
 	http.HandleFunc("/ws", handleWS)
-	log.Println("server listening on :3001")
-	if err := http.ListenAndServe(":3001", nil); err != nil {
+	log.Println("server listening on :3000")
+	if err := http.ListenAndServe(":3000", nil); err != nil {
 		log.Fatal(err)
 	}
 }
