@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -19,18 +19,18 @@ var hub = NewHub()
 func handleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("upgrade error: %v", err)
+		slog.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
 	_, raw, err := conn.ReadMessage()
 	if err != nil {
-		log.Printf("first message read error: %v", err)
+		slog.Error("first message read failed", "error", err)
 		conn.WriteMessage(websocket.TextMessage, errorMsg("failed to read first message"))
 		conn.Close()
 		return
 	}
-	log.Printf("first message: %s", raw)
+	slog.Debug("first message received", "raw", string(raw))
 
 	var msg struct {
 		Type string `json:"type"`
@@ -101,20 +101,20 @@ func handleCreateRoom(conn *websocket.Conn, raw []byte) {
 }
 
 func handleJoinRoom(conn *websocket.Conn, raw []byte) {
-	log.Printf("handleJoinRoom: received join request")
+	slog.Debug("join request received")
 	var m struct {
 		Code string `json:"code"`
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
-		log.Printf("handleJoinRoom: unmarshal error: %v", err)
+		slog.Error("join request unmarshal failed", "error", err)
 		conn.WriteMessage(websocket.TextMessage, errorMsg("invalid json"))
 		conn.Close()
 		return
 	}
 	code := strings.ToUpper(strings.TrimSpace(m.Code))
 	name := strings.TrimSpace(m.Name)
-	log.Printf("handleJoinRoom: code=%q name=%q", code, name)
+	slog.Debug("join room params", "code", code, "name", name)
 	if len(code) != RoomCodeLength {
 		conn.WriteMessage(websocket.TextMessage, errorMsg("invalid room code"))
 		conn.Close()
@@ -128,12 +128,12 @@ func handleJoinRoom(conn *websocket.Conn, raw []byte) {
 
 	room, ok := hub.LookupRoom(code)
 	if !ok {
-		log.Printf("handleJoinRoom: room %q not found", code)
+		slog.Warn("room not found", "code", code)
 		conn.WriteMessage(websocket.TextMessage, errorMsg("room not found"))
 		conn.Close()
 		return
 	}
-	log.Printf("handleJoinRoom: found room %q, sending intent", code)
+	slog.Debug("sending join intent", "code", code)
 
 	sendCh := make(chan []byte, 64)
 	resultCh := make(chan string, 1)
@@ -147,7 +147,7 @@ func handleJoinRoom(conn *websocket.Conn, raw []byte) {
 	}
 
 	playerID := <-resultCh
-	log.Printf("handleJoinRoom: got playerID=%q", playerID)
+	slog.Debug("join result received", "playerID", playerID, "code", code)
 	if playerID == "" {
 		conn.Close()
 		return
@@ -260,9 +260,12 @@ func main() {
 		port = "3000" // fallback for local dev
 	}
 
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	http.HandleFunc("/ws", handleWS)
-	log.Printf("server listening on :%s", port)
+	slog.Info("server starting", "port", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Fatal(err)
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"math/big"
 	"strings"
 	"time"
@@ -224,7 +224,7 @@ func (r *Room) removePlayer(id string) {
 }
 
 func (r *Room) handleJoin(in Intent) {
-	log.Printf("handleJoin: phase=%q, name=%q", r.Phase, in.Name)
+	slog.Info("player joining", "phase", r.Phase, "name", in.Name, "room", r.Code)
 	if r.Phase != "lobby" {
 		r.sendToPlayer(in.Send, errorMsg("game already in progress"))
 		close(in.Send)
@@ -697,28 +697,17 @@ func buildRoleReveal(p *Player, players []*Player, nightSeconds int) []byte {
 	default:
 		desc = "Complete tasks and find the impostors."
 	}
-	playerInfos := make([]PlayerInfo, len(players))
-	for i, pl := range players {
-		playerInfos[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
-	}
 	m := map[string]interface{}{
 		"type":    "role_reveal",
 		"role":    p.Role,
 		"desc":    desc,
 		"timer":   nightSeconds,
-		"players": playerInfos,
+		"players": buildPlayerList(players),
 	}
 	if p.Role == "impostor" {
-		var fellows []PlayerInfo
-		for _, pl := range players {
-			if pl.Role == "impostor" && pl.ID != p.ID {
-				fellows = append(fellows, PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected})
-			}
-		}
-		m["fellowImpostors"] = fellows
+		m["fellowImpostors"] = buildFellowImpostors(players, p.ID)
 	}
-	b, _ := json.Marshal(m)
-	return b
+	return safeMarshal(m)
 }
 
 func shuffle(players []*Player) []*Player {

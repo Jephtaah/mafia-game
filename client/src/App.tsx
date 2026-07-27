@@ -163,163 +163,292 @@ function App() {
   }, [])
 
   useEffect(() => {
-    onMessage((msg: ServerMessage) => {
-      const s = stateRef.current
-      if (msg.type === 'room_created') {
-        localStorage.setItem(STORAGE_TOKEN_KEY, msg.token)
-        localStorage.setItem(STORAGE_CODE_KEY, msg.code)
+    const s = (): AppState => stateRef.current
+
+    const handleRoomCreated = (msg: ServerMessage & {type: 'room_created'}) => {
+      localStorage.setItem(STORAGE_TOKEN_KEY, msg.token)
+      localStorage.setItem(STORAGE_CODE_KEY, msg.code)
+      setState({
+        screen: 'lobby',
+        code: msg.code,
+        playerId: msg.playerId,
+        token: msg.token,
+        players: msg.players,
+        isHost: msg.isHost,
+        error: '',
+      })
+    }
+
+    const handleResumeState = (msg: ServerMessage & {type: 'resume_state'}) => {
+      const token = localStorage.getItem(STORAGE_TOKEN_KEY) || ''
+      const code = localStorage.getItem(STORAGE_CODE_KEY) || ''
+      const myId = msg.playerId
+
+      if (msg.phase === 'night') {
+        setState({
+          screen: 'night',
+          role: msg.role || 'crewmate',
+          fellowImpostors: msg.fellowImpostors,
+          code,
+          playerId: myId,
+          token,
+          players: msg.players,
+          isHost: false,
+          isAlive: msg.isAlive,
+          timer: msg.timer,
+          votedCount: msg.voted?.length ?? 0,
+          waiting: msg.waiting ?? (msg.fellowImpostors?.length ?? 0) > 0,
+        })
+      } else if (msg.phase === 'resolution') {
+        setState({
+          screen: 'resolution',
+          eliminated: msg.eliminated ?? null,
+          eliminatedRole: msg.eliminatedRole ?? null,
+          code,
+          playerId: myId,
+          token,
+          players: msg.players,
+          isHost: false,
+          role: msg.role || 'crewmate',
+          fellowImpostors: msg.fellowImpostors,
+          timer: msg.timer,
+        })
+      } else if (msg.phase === 'day') {
+        setState({
+          screen: 'day',
+          code,
+          playerId: myId,
+          token,
+          players: msg.players,
+          isHost: false,
+          role: msg.role || 'crewmate',
+          fellowImpostors: msg.fellowImpostors,
+          timer: msg.timer,
+          isAlive: msg.isAlive,
+          chatMessages: [],
+        })
+      } else if (msg.phase === 'voting') {
+        setState({
+          screen: 'voting',
+          code,
+          playerId: myId,
+          token,
+          players: msg.players,
+          isHost: false,
+          role: msg.role || 'crewmate',
+          fellowImpostors: msg.fellowImpostors,
+          timer: msg.timer,
+          isAlive: msg.isAlive,
+          votes: msg.votes ?? [],
+          elimination: null,
+        })
+      } else if (msg.phase === 'lobby') {
         setState({
           screen: 'lobby',
-          code: msg.code,
-          playerId: msg.playerId,
-          token: msg.token,
+          code,
+          playerId: myId,
+          token,
           players: msg.players,
-          isHost: msg.isHost,
+          isHost: false,
           error: '',
         })
-      } else if (msg.type === 'resume_state') {
-        const token = localStorage.getItem(STORAGE_TOKEN_KEY) || ''
-        const code = localStorage.getItem(STORAGE_CODE_KEY) || ''
-        const myId = msg.playerId
+      } else if (msg.phase === 'ended') {
+        setState({
+          screen: 'join',
+          error: '',
+        })
+      }
+    }
 
-        if (msg.phase === 'night') {
-          setState({
-            screen: 'night',
-            role: msg.role || 'crewmate',
-            fellowImpostors: msg.fellowImpostors,
-            code,
-            playerId: myId,
-            token,
-            players: msg.players,
-            isHost: false,
-            isAlive: msg.isAlive,
-            timer: msg.timer,
-            votedCount: msg.voted?.length ?? 0,
-            waiting: msg.waiting ?? (msg.fellowImpostors?.length ?? 0) > 0,
-          })
-        } else if (msg.phase === 'resolution') {
-          setState({
+    const handleError = (msg: ServerMessage & {type: 'error'}) => {
+      if (s().screen === 'reconnecting') {
+        localStorage.removeItem(STORAGE_TOKEN_KEY)
+        localStorage.removeItem(STORAGE_CODE_KEY)
+        setState({ screen: 'join', error: msg.message })
+        clearCallbacks()
+        return
+      }
+      setState((prev) => ({ ...prev, error: msg.message } as AppState))
+    }
+
+    const handlePlayerList = (msg: ServerMessage & {type: 'player_list'}) => {
+      setState((prev) => {
+        if (prev.screen === 'lobby' || prev.screen === 'role_reveal' || prev.screen === 'night' || prev.screen === 'resolution' || prev.screen === 'day' || prev.screen === 'voting') {
+          return { ...prev, players: msg.players }
+        }
+        return prev
+      })
+    }
+
+    const handlePlayerDisconnected = (msg: ServerMessage & {type: 'player_disconnected'}) => {
+      const cur = s()
+      const name = cur.screen !== 'join' && cur.screen !== 'reconnecting' && 'players' in cur
+        ? cur.players.find((p) => p.id === msg.playerId)?.name
+        : null
+      if (name) addToast(`${name} disconnected`, 'warning')
+      setState((prev) => {
+        if ('players' in prev && prev.screen !== 'game_over') {
+          return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, false) }
+        }
+        return prev
+      })
+    }
+
+    const handlePlayerReconnected = (msg: ServerMessage & {type: 'player_reconnected'}) => {
+      const cur = s()
+      const name = cur.screen !== 'join' && cur.screen !== 'reconnecting' && 'players' in cur
+        ? cur.players.find((p) => p.id === msg.playerId)?.name
+        : null
+      if (name) addToast(`${name} reconnected`, 'info')
+      setState((prev) => {
+        if ('players' in prev && prev.screen !== 'game_over') {
+          return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, true) }
+        }
+        return prev
+      })
+    }
+
+    const handleRoleReveal = (msg: ServerMessage & {type: 'role_reveal'}) => {
+      const cur = s()
+      if (cur.screen === 'lobby') {
+        setState({
+          screen: 'role_reveal',
+          role: msg.role,
+          desc: msg.desc,
+          fellowImpostors: msg.fellowImpostors,
+          code: cur.code,
+          playerId: cur.playerId,
+          token: cur.token,
+          players: msg.players || cur.players,
+          isHost: cur.isHost,
+          timer: msg.timer,
+        })
+      }
+    }
+
+    const handleResolution = (msg: ServerMessage & {type: 'resolution'}) => {
+      setState((prev) => {
+        if (prev.screen === 'night' || prev.screen === 'role_reveal' || prev.screen === 'resolution') {
+          const role = prev.screen === 'role_reveal' ? prev.role : 'role' in prev ? prev.role : 'crewmate'
+          const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : 'fellowImpostors' in prev ? prev.fellowImpostors : undefined
+          const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
+          const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
+          return {
             screen: 'resolution',
-            eliminated: msg.eliminated ?? null,
-            eliminatedRole: msg.eliminatedRole ?? null,
-            code,
-            playerId: myId,
-            token,
-            players: msg.players,
-            isHost: false,
-            role: msg.role || 'crewmate',
-            fellowImpostors: msg.fellowImpostors,
-            timer: msg.timer,
-          })
-        } else if (msg.phase === 'day') {
-          setState({
-            screen: 'day',
-            code,
-            playerId: myId,
-            token,
-            players: msg.players,
-            isHost: false,
-            role: msg.role || 'crewmate',
-            fellowImpostors: msg.fellowImpostors,
-            timer: msg.timer,
-            isAlive: msg.isAlive,
-            chatMessages: [],
-          })
-        } else if (msg.phase === 'voting') {
-          setState({
-            screen: 'voting',
-            code,
-            playerId: myId,
-            token,
-            players: msg.players,
-            isHost: false,
-            role: msg.role || 'crewmate',
-            fellowImpostors: msg.fellowImpostors,
-            timer: msg.timer,
-            isAlive: msg.isAlive,
-            votes: msg.votes ?? [],
-            elimination: null,
-          })
-        } else if (msg.phase === 'lobby') {
-          setState({
-            screen: 'lobby',
-            code,
-            playerId: myId,
-            token,
-            players: msg.players,
-            isHost: false,
-            error: '',
-          })
-        } else if (msg.phase === 'ended') {
-          setState({
-            screen: 'join',
-            error: '',
-          })
-        }
-      } else if (msg.type === 'error') {
-        if (s.screen === 'reconnecting') {
-          localStorage.removeItem(STORAGE_TOKEN_KEY)
-          localStorage.removeItem(STORAGE_CODE_KEY)
-          setState({ screen: 'join', error: msg.message })
-          clearCallbacks()
-          return
-        }
-        setState((prev) => ({ ...prev, error: msg.message } as AppState))
-      } else if (msg.type === 'player_list') {
-        setState((prev) => {
-          if (prev.screen === 'lobby' || prev.screen === 'role_reveal' || prev.screen === 'night' || prev.screen === 'resolution' || prev.screen === 'day' || prev.screen === 'voting') {
-            return { ...prev, players: msg.players }
+            eliminated: msg.eliminated !== undefined ? msg.eliminated : prevElim,
+            eliminatedRole: msg.role !== undefined ? msg.role : prevElimRole,
+            code: prev.code,
+            playerId: prev.playerId,
+            token: prev.token,
+            players: prev.players,
+            isHost: prev.isHost,
+            role,
+            fellowImpostors,
+            timer: 5,
           }
-          return prev
-        })
-      } else if (msg.type === 'player_disconnected') {
-        const name = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
-          ? s.players.find((p) => p.id === msg.playerId)?.name
-          : null
-        if (name) addToast(`${name} disconnected`, 'warning')
-        setState((prev) => {
-          if ('players' in prev && prev.screen !== 'game_over') {
-            return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, false) }
-          }
-          return prev
-        })
-      } else if (msg.type === 'player_reconnected') {
-        const name = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
-          ? s.players.find((p) => p.id === msg.playerId)?.name
-          : null
-        if (name) addToast(`${name} reconnected`, 'info')
-        setState((prev) => {
-          if ('players' in prev && prev.screen !== 'game_over') {
-            return { ...prev, players: updatePlayerConnected(prev.players, msg.playerId, true) }
-          }
-          return prev
-        })
-      } else if (msg.type === 'role_reveal') {
-        if (s.screen === 'lobby') {
-          setState({
-            screen: 'role_reveal',
-            role: msg.role,
-            desc: msg.desc,
-            fellowImpostors: msg.fellowImpostors,
-            code: s.code,
-            playerId: s.playerId,
-            token: s.token,
-            players: msg.players || s.players,
-            isHost: s.isHost,
-            timer: msg.timer,
-          })
         }
-      } else if (msg.type === 'resolution') {
-        setState((prev) => {
-          if (prev.screen === 'night' || prev.screen === 'role_reveal' || prev.screen === 'resolution') {
-            const role = prev.screen === 'role_reveal' ? prev.role : 'role' in prev ? prev.role : 'crewmate'
-            const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : 'fellowImpostors' in prev ? prev.fellowImpostors : undefined
+        return prev
+      })
+    }
+
+    const handleNightStatus = (msg: ServerMessage & {type: 'night_status'}) => {
+      setState((prev) => {
+        if (prev.screen === 'night') {
+          return {
+            ...prev,
+            votedCount: msg.voted?.length ?? 0,
+            waiting: msg.waiting ?? true,
+          }
+        }
+        return prev
+      })
+    }
+
+    const handleChatMessage = (msg: ServerMessage & {type: 'chat_message'}) => {
+      setState((prev) => {
+        if (prev.screen === 'day') {
+          return {
+            ...prev,
+            chatMessages: [...prev.chatMessages, { playerId: msg.playerId, name: msg.name, text: msg.text }],
+          }
+        }
+        return prev
+      })
+    }
+
+    const handleVoteTally = (msg: ServerMessage & {type: 'vote_tally'}) => {
+      setState((prev) => {
+        if (prev.screen === 'voting') {
+          return { ...prev, votes: msg.votes }
+        }
+        return prev
+      })
+    }
+
+    const handleInvestigationResult = (msg: ServerMessage & {type: 'investigation_result'}) => {
+      const cur = s()
+      const targetName = cur.screen !== 'join' && cur.screen !== 'reconnecting' && 'players' in cur
+        ? cur.players.find((p) => p.id === msg.target)?.name
+        : null
+      if (targetName) {
+        addToast(msg.isImpostor ? `${targetName} is an impostor!` : `${targetName} is not an impostor.`, msg.isImpostor ? 'warning' : 'info')
+      }
+    }
+
+    const handleElimination = (msg: ServerMessage & {type: 'elimination'}) => {
+      setState((prev) => {
+        if (prev.screen === 'voting') {
+          return { ...prev, elimination: { eliminated: msg.eliminated, role: msg.role } }
+        }
+        return prev
+      })
+    }
+
+    const handleGameOver = (msg: ServerMessage & {type: 'game_over'}) => {
+      localStorage.removeItem(STORAGE_TOKEN_KEY)
+      localStorage.removeItem(STORAGE_CODE_KEY)
+      const cur = s()
+      const pid = 'playerId' in cur ? cur.playerId : ''
+      if (cur.screen !== 'join' && cur.screen !== 'reconnecting') {
+        setState({
+          screen: 'game_over',
+          winner: msg.winner,
+          players: msg.players,
+          playerId: pid,
+        })
+      }
+    }
+
+    const handlePhaseChange = (msg: ServerMessage & {type: 'phase_change'}) => {
+      playPhaseSound(msg.phase)
+      setState((prev) => {
+        if (prev.screen === 'role_reveal' || prev.screen === 'lobby') {
+          if (msg.phase === 'night') {
+            const role = prev.screen === 'role_reveal' ? prev.role : 'crewmate'
+            const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : undefined
+            return {
+              screen: 'night',
+              role,
+              fellowImpostors,
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              isAlive: true,
+              timer: msg.timer,
+              votedCount: 0,
+              waiting: (fellowImpostors?.length ?? 0) > 0,
+            }
+          } else if (msg.phase === 'resolution') {
+            const role = prev.screen === 'role_reveal' ? prev.role : 'crewmate'
+            const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : undefined
             const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
             const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
             return {
               screen: 'resolution',
-              eliminated: msg.eliminated !== undefined ? msg.eliminated : prevElim,
-              eliminatedRole: msg.role !== undefined ? msg.role : prevElimRole,
+              eliminated: prevElim,
+              eliminatedRole: prevElimRole,
               code: prev.code,
               playerId: prev.playerId,
               token: prev.token,
@@ -327,197 +456,120 @@ function App() {
               isHost: prev.isHost,
               role,
               fellowImpostors,
-              timer: 5,
+              timer: msg.timer,
             }
           }
-          return prev
-        })
-      } else if (msg.type === 'night_status') {
-        setState((prev) => {
-          if (prev.screen === 'night') {
+        } else if (prev.screen === 'night') {
+          if (msg.phase === 'resolution') {
+            const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
+            const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
             return {
-              ...prev,
-              votedCount: msg.voted?.length ?? 0,
-              waiting: msg.waiting ?? true,
+              screen: 'resolution',
+              eliminated: prevElim,
+              eliminatedRole: prevElimRole,
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              role: prev.role,
+              fellowImpostors: prev.fellowImpostors,
+              timer: msg.timer,
             }
           }
-          return prev
-        })
-      } else if (msg.type === 'chat_message') {
-        setState((prev) => {
-          if (prev.screen === 'day') {
+          return { ...prev, timer: msg.timer }
+        } else if (prev.screen === 'resolution') {
+          if (msg.phase === 'day') {
             return {
-              ...prev,
-              chatMessages: [...prev.chatMessages, { playerId: msg.playerId, name: msg.name, text: msg.text }],
+              screen: 'day',
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              role: prev.role,
+              fellowImpostors: prev.fellowImpostors,
+              timer: msg.timer,
+              isAlive: myAlive(prev.players, prev.playerId),
+              chatMessages: [],
+            }
+          } else {
+            return { ...prev, timer: msg.timer }
+          }
+        } else if (prev.screen === 'day') {
+          if (msg.phase === 'voting') {
+            return {
+              screen: 'voting',
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              role: prev.role,
+              fellowImpostors: prev.fellowImpostors,
+              timer: msg.timer,
+              isAlive: myAlive(prev.players, prev.playerId),
+              votes: [],
+              elimination: null,
             }
           }
-          return prev
-        })
-      } else if (msg.type === 'vote_tally') {
-        setState((prev) => {
-          if (prev.screen === 'voting') {
-            return { ...prev, votes: msg.votes }
+          if (msg.phase === 'night') {
+            return {
+              screen: 'night',
+              role: prev.role,
+              fellowImpostors: prev.fellowImpostors,
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              isAlive: myAlive(prev.players, prev.playerId),
+              timer: msg.timer,
+              votedCount: 0,
+              waiting: (prev.fellowImpostors?.length ?? 0) > 0,
+            }
           }
-          return prev
-        })
-      } else if (msg.type === 'investigation_result') {
-        const targetName = s.screen !== 'join' && s.screen !== 'reconnecting' && 'players' in s
-          ? s.players.find((p) => p.id === msg.target)?.name
-          : null
-        if (targetName) {
-          addToast(msg.isImpostor ? `${targetName} is an impostor!` : `${targetName} is not an impostor.`, msg.isImpostor ? 'warning' : 'info')
+          return { ...prev, timer: msg.timer }
+        } else if (prev.screen === 'voting') {
+          if (msg.phase === 'night') {
+            return {
+              screen: 'night',
+              role: prev.role,
+              fellowImpostors: prev.fellowImpostors,
+              code: prev.code,
+              playerId: prev.playerId,
+              token: prev.token,
+              players: prev.players,
+              isHost: prev.isHost,
+              isAlive: myAlive(prev.players, prev.playerId),
+              timer: msg.timer,
+              votedCount: 0,
+              waiting: (prev.fellowImpostors?.length ?? 0) > 0,
+            }
+          }
+          return { ...prev, timer: msg.timer }
         }
-      } else if (msg.type === 'elimination') {
-        setState((prev) => {
-          if (prev.screen === 'voting') {
-            return { ...prev, elimination: { eliminated: msg.eliminated, role: msg.role } }
-          }
-          return prev
-        })
-      } else if (msg.type === 'game_over') {
-        localStorage.removeItem(STORAGE_TOKEN_KEY)
-        localStorage.removeItem(STORAGE_CODE_KEY)
-        const pid = 'playerId' in s ? s.playerId : ''
-        if (s.screen !== 'join' && s.screen !== 'reconnecting') {
-          setState({
-            screen: 'game_over',
-            winner: msg.winner,
-            players: msg.players,
-            playerId: pid,
-          })
-        }
-      } else if (msg.type === 'phase_change') {
-        playPhaseSound(msg.phase)
-        setState((prev) => {
-          if (prev.screen === 'role_reveal' || prev.screen === 'lobby') {
-            if (msg.phase === 'night') {
-              const role = prev.screen === 'role_reveal' ? prev.role : 'crewmate'
-              const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : undefined
-              return {
-                screen: 'night',
-                role,
-                fellowImpostors,
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                isAlive: true,
-                timer: msg.timer,
-                votedCount: 0,
-                waiting: (fellowImpostors?.length ?? 0) > 0,
-              }
-            } else if (msg.phase === 'resolution') {
-              const role = prev.screen === 'role_reveal' ? prev.role : 'crewmate'
-              const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : undefined
-              const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
-              const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
-              return {
-                screen: 'resolution',
-                eliminated: prevElim,
-                eliminatedRole: prevElimRole,
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                role,
-                fellowImpostors,
-                timer: msg.timer,
-              }
-            }
-          } else if (prev.screen === 'night') {
-            if (msg.phase === 'resolution') {
-              const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
-              const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
-              return {
-                screen: 'resolution',
-                eliminated: prevElim,
-                eliminatedRole: prevElimRole,
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                role: prev.role,
-                fellowImpostors: prev.fellowImpostors,
-                timer: msg.timer,
-              }
-            }
-            return { ...prev, timer: msg.timer }
-          } else if (prev.screen === 'resolution') {
-            if (msg.phase === 'day') {
-              return {
-                screen: 'day',
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                role: prev.role,
-                fellowImpostors: prev.fellowImpostors,
-                timer: msg.timer,
-                isAlive: myAlive(prev.players, prev.playerId),
-                chatMessages: [],
-              }
-            } else {
-              return { ...prev, timer: msg.timer }
-            }
-          } else if (prev.screen === 'day') {
-            if (msg.phase === 'voting') {
-              return {
-                screen: 'voting',
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                role: prev.role,
-                fellowImpostors: prev.fellowImpostors,
-                timer: msg.timer,
-                isAlive: myAlive(prev.players, prev.playerId),
-                votes: [],
-                elimination: null,
-              }
-            }
-            if (msg.phase === 'night') {
-              return {
-                screen: 'night',
-                role: prev.role,
-                fellowImpostors: prev.fellowImpostors,
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                isAlive: myAlive(prev.players, prev.playerId),
-                timer: msg.timer,
-                votedCount: 0,
-                waiting: (prev.fellowImpostors?.length ?? 0) > 0,
-              }
-            }
-            return { ...prev, timer: msg.timer }
-          } else if (prev.screen === 'voting') {
-            if (msg.phase === 'night') {
-              return {
-                screen: 'night',
-                role: prev.role,
-                fellowImpostors: prev.fellowImpostors,
-                code: prev.code,
-                playerId: prev.playerId,
-                token: prev.token,
-                players: prev.players,
-                isHost: prev.isHost,
-                isAlive: myAlive(prev.players, prev.playerId),
-                timer: msg.timer,
-                votedCount: 0,
-                waiting: (prev.fellowImpostors?.length ?? 0) > 0,
-              }
-            }
-            return { ...prev, timer: msg.timer }
-          }
-          return prev
-        })
+        return prev
+      })
+    }
+
+    onMessage((msg: ServerMessage) => {
+      switch (msg.type) {
+        case 'room_created': handleRoomCreated(msg); break
+        case 'resume_state': handleResumeState(msg); break
+        case 'error': handleError(msg); break
+        case 'player_list': handlePlayerList(msg); break
+        case 'player_disconnected': handlePlayerDisconnected(msg); break
+        case 'player_reconnected': handlePlayerReconnected(msg); break
+        case 'role_reveal': handleRoleReveal(msg); break
+        case 'resolution': handleResolution(msg); break
+        case 'night_status': handleNightStatus(msg); break
+        case 'chat_message': handleChatMessage(msg); break
+        case 'vote_tally': handleVoteTally(msg); break
+        case 'investigation_result': handleInvestigationResult(msg); break
+        case 'elimination': handleElimination(msg); break
+        case 'game_over': handleGameOver(msg); break
+        case 'phase_change': handlePhaseChange(msg); break
       }
     })
   }, [onMessage, myAlive, updatePlayerConnected, clearCallbacks, addToast])

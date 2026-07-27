@@ -1,6 +1,9 @@
 package main
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log/slog"
+)
 
 type PlayerInfo struct {
 	ID        string `json:"id"`
@@ -10,46 +13,61 @@ type PlayerInfo struct {
 	Connected bool   `json:"connected"`
 }
 
-func errorMsg(msg string) []byte {
-	b, _ := json.Marshal(map[string]string{"type": "error", "message": msg})
+func buildPlayerList(players []*Player) []PlayerInfo {
+	out := make([]PlayerInfo, len(players))
+	for i, p := range players {
+		out[i] = PlayerInfo{ID: p.ID, Name: p.Name, IsHost: p.IsHost, IsAlive: p.IsAlive, Connected: p.Connected}
+	}
+	return out
+}
+
+func buildFellowImpostors(players []*Player, selfID string) []PlayerInfo {
+	var out []PlayerInfo
+	for _, p := range players {
+		if p.Role == "impostor" && p.ID != selfID {
+			out = append(out, PlayerInfo{ID: p.ID, Name: p.Name, IsHost: p.IsHost, IsAlive: p.IsAlive, Connected: p.Connected})
+		}
+	}
+	return out
+}
+
+func safeMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Error("json marshal failed", "error", err)
+		return []byte(`{"type":"error","message":"internal server error"}`)
+	}
 	return b
 }
 
+func errorMsg(msg string) []byte {
+	return safeMarshal(map[string]string{"type": "error", "message": msg})
+}
+
 func roomCreatedMsg(r *Room, p *Player) []byte {
-	players := make([]PlayerInfo, len(r.Players))
-	for i, pl := range r.Players {
-		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
-	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":     "room_created",
 		"code":     r.Code,
 		"playerId": p.ID,
 		"token":    p.Token,
-		"players":  players,
+		"players":  buildPlayerList(r.Players),
 		"isHost":   p.IsHost,
 	})
-	return b
 }
 
 func playerListMsg(r *Room) []byte {
-	players := make([]PlayerInfo, len(r.Players))
-	for i, pl := range r.Players {
-		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
-	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":    "player_list",
-		"players": players,
+		"players": buildPlayerList(r.Players),
 	})
-	return b
 }
 
 func phaseChangeMsg(phase string, seconds int) []byte {
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":  "phase_change",
 		"phase": phase,
 		"timer": seconds,
 	})
-	return b
 }
 
 func nightStatusMsg(ns *NightState, players []*Player) []byte {
@@ -65,12 +83,11 @@ func nightStatusMsg(ns *NightState, players []*Player) []byte {
 		}
 	}
 	waiting := len(voted) < impostorCount
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":   "night_status",
 		"voted":  voted,
 		"waiting": waiting,
 	})
-	return b
 }
 
 func resolutionMsg(eliminatedID string, role string) []byte {
@@ -82,12 +99,11 @@ func resolutionMsg(eliminatedID string, role string) []byte {
 	if role != "" {
 		rolePtr = &role
 	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":       "resolution",
 		"eliminated": elimPtr,
 		"role":       rolePtr,
 	})
-	return b
 }
 
 func eliminationMsg(eliminatedID string, role string) []byte {
@@ -99,61 +115,52 @@ func eliminationMsg(eliminatedID string, role string) []byte {
 	if role != "" {
 		rolePtr = &role
 	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":       "elimination",
 		"eliminated": elimPtr,
 		"role":       rolePtr,
 	})
-	return b
 }
 
 func chatMessage(p *Player, text string) []byte {
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":     "chat_message",
 		"playerId": p.ID,
 		"name":     p.Name,
 		"text":     text,
 	})
-	return b
 }
 
 func investigationResultMsg(targetID string, isImpostor bool) []byte {
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":       "investigation_result",
 		"target":     targetID,
 		"isImpostor": isImpostor,
 	})
-	return b
 }
 
 func playerDisconnectedMsg(playerID string) []byte {
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":     "player_disconnected",
 		"playerId": playerID,
 	})
-	return b
 }
 
 func playerReconnectedMsg(playerID string) []byte {
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":     "player_reconnected",
 		"playerId": playerID,
 	})
-	return b
 }
 
 func resumeStateMsg(r *Room, p *Player) []byte {
-	players := make([]PlayerInfo, len(r.Players))
-	for i, pl := range r.Players {
-		players[i] = PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected}
-	}
 	m := map[string]interface{}{
 		"type":     "resume_state",
 		"phase":    r.Phase,
 		"timer":    0,
 		"isAlive":  p.IsAlive,
 		"playerId": p.ID,
-		"players":  players,
+		"players":  buildPlayerList(r.Players),
 	}
 	if r.phaseTimer != nil {
 		for phase, sec := range map[string]int{"night": r.Config.NightSeconds, "day": r.Config.DaySeconds, "voting": r.Config.VoteSeconds} {
@@ -207,17 +214,10 @@ func resumeStateMsg(r *Room, p *Player) []byte {
 	if p.Role != "" {
 		m["role"] = p.Role
 		if p.Role == "impostor" {
-			var fellows []PlayerInfo
-			for _, pl := range r.Players {
-				if pl.Role == "impostor" && pl.ID != p.ID {
-					fellows = append(fellows, PlayerInfo{ID: pl.ID, Name: pl.Name, IsHost: pl.IsHost, IsAlive: pl.IsAlive, Connected: pl.Connected})
-				}
-			}
-			m["fellowImpostors"] = fellows
+			m["fellowImpostors"] = buildFellowImpostors(r.Players, p.ID)
 		}
 	}
-	b, _ := json.Marshal(m)
-	return b
+	return safeMarshal(m)
 }
 
 func voteTallyMsg(vs *VoteState, players []*Player) []byte {
@@ -231,11 +231,10 @@ func voteTallyMsg(vs *VoteState, players []*Player) []byte {
 			votes = append(votes, voteEntry{PlayerID: pid, Target: target})
 		}
 	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":  "vote_tally",
 		"votes": votes,
 	})
-	return b
 }
 
 func gameOverMsg(r *Room, winner string) []byte {
@@ -249,10 +248,9 @@ func gameOverMsg(r *Room, winner string) []byte {
 	for i, p := range r.Players {
 		players[i] = playerResult{ID: p.ID, Name: p.Name, Role: p.Role, IsAlive: p.IsAlive}
 	}
-	b, _ := json.Marshal(map[string]interface{}{
+	return safeMarshal(map[string]interface{}{
 		"type":    "game_over",
 		"winner":  winner,
 		"players": players,
 	})
-	return b
 }
