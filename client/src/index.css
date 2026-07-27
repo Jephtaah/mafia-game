@@ -1,1 +1,76 @@
 @import "tailwindcss";
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes card-flip {
+  from { opacity: 0; transform: perspective(600px) rotateY(-80deg); }
+  to { opacity: 1; transform: perspective(600px) rotateY(0); }
+}
+@keyframes gold-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(196, 168, 97, 0); }
+  50% { box-shadow: inset 0 0 0 1px rgba(196, 168, 97, 0.4); }
+}
+@keyframes blind-drift {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
+}
+@keyframes vote-reveal {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.4s ease-out both; }
+.animate-fade-in-scale { animation: fade-in-scale 0.35s ease-out both; }
+.animate-card-flip { animation: card-flip 0.5s ease-out both; }
+.animate-gold-pulse { animation: gold-pulse 2s ease-in-out infinite; }
+.animate-blind-drift { animation: blind-drift 12s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-toast-in { animation: toast-in 0.3s ease-out both; }
+.animate-toast-out { animation: toast-out 0.3s ease-out both forwards; }
+.animate-vote-reveal { animation: vote-reveal 0.3s ease-out both; }
+.animate-phase-enter { animation: fade-in-scale 0.35s ease-out; }
+.animate-delay-1 { animation-delay: 0.1s; }
+.animate-delay-2 { animation-delay: 0.2s; }
+.animate-delay-3 { animation-delay: 0.3s; }
+.animate-delay-4 { animation-delay: 0.4s; }
+.animate-delay-5 { animation-delay: 0.5s; }
+
+.blinds-overlay::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.025) 3px,
+    rgba(0, 0, 0, 0.05) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  animation: blind-drift 12s ease-in-out infinite;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(196, 168, 97, 0.25); border-radius: 999px; }

@@ -9,3 +9,7 @@ server/*.test
 # General
 .DS_Store
 .env
+
+# Docs
+AGENTS.md
+docs/
