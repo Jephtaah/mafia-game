@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { WS_URL } from '../config'
 
 interface JoinScreenProps {
   send: (msg: object) => void
@@ -41,7 +42,7 @@ export default function JoinScreen({ send, readyState, connect, error, onClearEr
     onClearError()
     pendingRef.current = { kind: 'create', name: trimmed }
     setPendingKind('create')
-    connect('ws://localhost:3001/ws')
+    connect(WS_URL)
   }
 
   const handleJoin = () => {
@@ -59,7 +60,7 @@ export default function JoinScreen({ send, readyState, connect, error, onClearEr
     onClearError()
     pendingRef.current = { kind: 'join', name: trimmed, code }
     setPendingKind('join')
-    connect('ws://localhost:3001/ws')
+    connect(WS_URL)
   }
 
   const isConnecting = readyState === WebSocket.CONNECTING
