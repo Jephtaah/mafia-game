@@ -15,7 +15,7 @@ const roleDisplay: Record<string, { label: string; color: string; accent: string
 }
 
 export default function RoleReveal({ role, desc, fellowImpostors, onDismiss }: RoleRevealProps) {
-  const info = roleDisplay[role] || roleDisplay.crewmate
+  const info = roleDisplay[role] ?? roleDisplay.crewmate ?? { label: role, color: 'text-[#C4A861]', accent: 'border-[#C4A861]/30' }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

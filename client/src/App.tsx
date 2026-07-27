@@ -313,8 +313,8 @@ function App() {
           if (prev.screen === 'night' || prev.screen === 'role_reveal' || prev.screen === 'resolution') {
             const role = prev.screen === 'role_reveal' ? prev.role : 'role' in prev ? prev.role : 'crewmate'
             const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : 'fellowImpostors' in prev ? prev.fellowImpostors : undefined
-            const prevElim = 'eliminated' in prev ? prev.eliminated : null
-            const prevElimRole = 'eliminatedRole' in prev ? prev.eliminatedRole : null
+            const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
+            const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
             return {
               screen: 'resolution',
               eliminated: msg.eliminated !== undefined ? msg.eliminated : prevElim,
@@ -409,8 +409,8 @@ function App() {
             } else if (msg.phase === 'resolution') {
               const role = prev.screen === 'role_reveal' ? prev.role : 'crewmate'
               const fellowImpostors = prev.screen === 'role_reveal' ? prev.fellowImpostors : undefined
-              const prevElim = 'eliminated' in prev ? prev.eliminated : null
-              const prevElimRole = 'eliminatedRole' in prev ? prev.eliminatedRole : null
+              const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
+              const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
               return {
                 screen: 'resolution',
                 eliminated: prevElim,
@@ -427,8 +427,8 @@ function App() {
             }
           } else if (prev.screen === 'night') {
             if (msg.phase === 'resolution') {
-              const prevElim = 'eliminated' in prev ? prev.eliminated : null
-              const prevElimRole = 'eliminatedRole' in prev ? prev.eliminatedRole : null
+              const prevElim = 'eliminated' in prev ? (prev.eliminated as string | null) : null
+              const prevElimRole = 'eliminatedRole' in prev ? (prev.eliminatedRole as string | null) : null
               return {
                 screen: 'resolution',
                 eliminated: prevElim,

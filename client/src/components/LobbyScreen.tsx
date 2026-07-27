@@ -77,14 +77,14 @@ export default function LobbyScreen({ send, roomCode, isHost, players, error, on
         {isHost ? (
           <button
             onClick={handleStart}
-            disabled={players.length < 5}
+            disabled={players.length < 1}
             className="w-full py-3 border border-[#C4A861]/40 text-[#C4A861] text-xs
                        tracking-[0.2em] uppercase hover:bg-[#C4A861]/8
                        disabled:opacity-30 disabled:cursor-not-allowed
                        transition-all duration-300"
           >
-            {players.length < 5
-              ? `Awaiting ${5 - players.length} more`
+            {players.length < 1
+              ? `Awaiting players`
               : 'Commence'}
           </button>
         ) : (
