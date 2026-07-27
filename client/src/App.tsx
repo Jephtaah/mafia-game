@@ -9,6 +9,7 @@ import VotingScreen from './components/VotingScreen'
 import GameOverScreen from './components/GameOverScreen'
 import { useWebSocket } from './hooks/useWebSocket'
 import type { ServerMessage, PlayerInfo } from './types/messages'
+import { WS_URL } from './config'
 
 const STORAGE_TOKEN_KEY = 'mafia_token'
 const STORAGE_CODE_KEY = 'mafia_code'
@@ -119,7 +120,7 @@ function App() {
     const token = localStorage.getItem(STORAGE_TOKEN_KEY)
     if (token && !reconnectStarted.current) {
       reconnectStarted.current = true
-      connect('ws://localhost:3001/ws')
+      connect(WS_URL)
     }
   }, [connect])
 
@@ -138,7 +139,7 @@ function App() {
       setState({ screen: 'reconnecting', error: '' })
       addToast(`Connection lost. Retrying in ${Math.round(delay / 1000)}s...`, 'warning')
       setTimeout(() => {
-        connect('ws://localhost:3001/ws')
+        connect(WS_URL)
       }, delay)
     })
   }, [onClose, connect, addToast])
