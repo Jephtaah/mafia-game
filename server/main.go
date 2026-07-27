@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -254,9 +255,14 @@ func clampPhase(val, def int) int {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000" // fallback for local dev
+	}
+
 	http.HandleFunc("/ws", handleWS)
-	log.Println("server listening on :3000")
-	if err := http.ListenAndServe(":3000", nil); err != nil {
+	log.Printf("server listening on :%s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
 	}
 }
